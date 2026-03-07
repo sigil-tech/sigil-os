@@ -324,6 +324,13 @@ impl DaemonClient {
         Ok(())
     }
 
+    /// Notifies the daemon that the active tool view has changed.
+    pub fn view_changed(&mut self, view: &str) -> Result<(), String> {
+        let payload = serde_json::json!({ "view": view });
+        self.call("view-changed", payload)?;
+        Ok(())
+    }
+
     /// Sends a natural-language query to the daemon's AI routing layer.
     ///
     /// Returns the AI response along with the routing decision and measured
@@ -586,6 +593,16 @@ pub fn daemon_feedback(
         .lock()
         .unwrap()
         .feedback(&kind, detail.as_deref())
+}
+
+/// Notifies the daemon that the active tool view has changed, triggering
+/// a keybinding profile switch.
+#[tauri::command]
+pub fn daemon_view_changed(
+    state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
+    view: String,
+) -> Result<(), String> {
+    state.lock().unwrap().view_changed(&view)
 }
 
 /// Sends an AI query to the daemon via the Cactus routing layer.

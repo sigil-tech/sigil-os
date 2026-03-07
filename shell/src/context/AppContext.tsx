@@ -1,5 +1,6 @@
 import { createContext } from 'preact'
 import { useContext, useState } from 'preact/hooks'
+import { invoke } from '@tauri-apps/api/core'
 import type { SplitState } from '../layouts'
 import { defaultSplit } from '../layouts'
 
@@ -42,6 +43,8 @@ export function AppProvider({ children }: { children: preact.ComponentChildren }
         setSplit((s) => ({ ...s, secondaryView: v }))
       }
     }
+    // Notify daemon of view change for keybinding profile switch
+    invoke('daemon_view_changed', { view: v }).catch(() => {})
   }
 
   return (
