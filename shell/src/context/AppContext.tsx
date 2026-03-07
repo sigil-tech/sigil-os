@@ -1,5 +1,7 @@
 import { createContext } from 'preact'
 import { useContext, useState } from 'preact/hooks'
+import type { SplitState } from '../layouts'
+import { defaultSplit } from '../layouts'
 
 export type ViewId = 'terminal' | 'editor' | 'browser' | 'git' | 'containers' | 'insights'
 export type InputMode = 'shell' | 'ai'
@@ -9,6 +11,8 @@ interface AppState {
   setActiveView: (v: ViewId) => void
   inputMode: InputMode
   setInputMode: (m: InputMode) => void
+  split: SplitState
+  setSplit: (s: SplitState) => void
 }
 
 const AppCtx = createContext<AppState>({
@@ -16,14 +20,32 @@ const AppCtx = createContext<AppState>({
   setActiveView: () => {},
   inputMode: 'shell',
   setInputMode: () => {},
+  split: defaultSplit,
+  setSplit: () => {},
 })
 
 export function AppProvider({ children }: { children: preact.ComponentChildren }) {
-  const [activeView, setActiveView] = useState<ViewId>('terminal')
+  const [activeView, rawSetActiveView] = useState<ViewId>('terminal')
   const [inputMode, setInputMode] = useState<InputMode>('shell')
+  const [split, setSplit] = useState<SplitState>(defaultSplit)
+
+  function setActiveView(v: ViewId) {
+    rawSetActiveView(v)
+    // When not split, keep primaryView in sync
+    if (split.mode === 'none') {
+      setSplit((s) => ({ ...s, primaryView: v }))
+    } else {
+      // Update the focused pane's view
+      if (split.focus === 'primary') {
+        setSplit((s) => ({ ...s, primaryView: v }))
+      } else {
+        setSplit((s) => ({ ...s, secondaryView: v }))
+      }
+    }
+  }
 
   return (
-    <AppCtx.Provider value={{ activeView, setActiveView, inputMode, setInputMode }}>
+    <AppCtx.Provider value={{ activeView, setActiveView, inputMode, setInputMode, split, setSplit }}>
       {children}
     </AppCtx.Provider>
   )
@@ -31,4 +53,9 @@ export function AppProvider({ children }: { children: preact.ComponentChildren }
 
 export function useApp() {
   return useContext(AppCtx)
+}
+
+export function useSplitState() {
+  const { split, setSplit } = useApp()
+  return { split, setSplit }
 }
