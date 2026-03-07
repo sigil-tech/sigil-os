@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'preact/hooks'
-import { listen } from '@tauri-apps/api/event'
+import { listen, emit } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 
 interface Suggestion {
-  id: string
+  id: number
   text: string
+  title: string
   confidence: number
+  action_cmd: string
 }
 
 export function SuggestionBar() {
@@ -46,7 +48,7 @@ export function SuggestionBar() {
     return () => {}
   }, [queue.length])
 
-  // Keyboard: Tab = accept, Esc = dismiss
+  // Keyboard: Tab = accept (+ execute action_cmd if set), Esc = dismiss
   useEffect(() => {
     if (!current) return
     async function handleKey(e: KeyboardEvent) {
@@ -57,6 +59,10 @@ export function SuggestionBar() {
           suggestionId: current.id,
           outcome: 'accepted',
         }).catch(() => {})
+        // If an action command is set, emit it for the active PTY to execute
+        if (current.action_cmd) {
+          await emit('execute-action', { cmd: current.action_cmd }).catch(() => {})
+        }
         dismiss()
       } else if (e.key === 'Escape') {
         await invoke('daemon_feedback', {
@@ -78,14 +84,25 @@ export function SuggestionBar() {
     })
   }
 
+  function openHistory() {
+    emit('execute-action', { cmd: 'aetherctl suggestions' }).catch(() => {})
+  }
+
   if (!current) return null
 
   return (
     <div class="suggestion-bar" role="status" aria-live="polite">
-      <span class="suggestion-bar__text">{current.text}</span>
-      <span class="suggestion-bar__hints">
-        <kbd>Tab</kbd> accept &nbsp; <kbd>Esc</kbd> dismiss
+      <span class="suggestion-bar__text">
+        {current.title ? <strong>{current.title}: </strong> : null}
+        {current.text}
       </span>
+      <span class="suggestion-bar__hints">
+        <kbd>Tab</kbd> accept{current.action_cmd ? ' • Tab to execute' : ''}
+        &nbsp; <kbd>Esc</kbd> dismiss
+      </span>
+      <button class="suggestion-bar__history" onClick={openHistory}>
+        history
+      </button>
     </div>
   )
 }
