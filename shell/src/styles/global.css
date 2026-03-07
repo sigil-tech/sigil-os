@@ -1,0 +1,672 @@
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/700.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  background-color: #0a0a0a;
+  color: #e5e5e5;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  overflow: hidden;
+}
+
+#app {
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ── Shell Layout ──────────────────────────────────────────── */
+
+.shell-layout {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+.shell-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Left Rail ─────────────────────────────────────────────── */
+
+.left-rail {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 56px;
+  background-color: #0d0d0d;
+  border-right: 1px solid #1a1a1a;
+  padding: 8px 0;
+  flex-shrink: 0;
+}
+
+.left-rail__icons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.left-rail__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 48px;
+  background: none;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  transition: color 0.1s;
+}
+
+.left-rail__btn:hover {
+  color: #e5e5e5;
+}
+
+.left-rail__btn--active {
+  color: #6366f1;
+}
+
+.left-rail__btn:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: -2px;
+}
+
+.left-rail__status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  font-size: 9px;
+  color: #6b7280;
+}
+
+.left-rail__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: block;
+}
+
+.left-rail__dot--ok {
+  background-color: #22c55e;
+}
+
+.left-rail__dot--err {
+  background-color: #ef4444;
+}
+
+.left-rail__label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 52px;
+  text-align: center;
+}
+
+/* ── Content Pane ──────────────────────────────────────────── */
+
+.content-pane {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.content-pane__view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: stretch;
+  transition: opacity 100ms ease;
+}
+
+.view-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: #374151;
+  font-size: 18px;
+}
+
+/* ── AI Overlay ────────────────────────────────────────────── */
+
+.ai-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 10, 10, 0.95);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  overflow: hidden;
+}
+
+.ai-overlay__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #1f2937;
+}
+
+.ai-overlay__title {
+  font-size: 12px;
+  color: #9ca3af;
+  flex: 1;
+}
+
+.ai-overlay__badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.ai-overlay__badge--local {
+  background: #14532d;
+  color: #86efac;
+}
+
+.ai-overlay__badge--cloud {
+  background: #1e3a5f;
+  color: #93c5fd;
+}
+
+.ai-overlay__close {
+  background: none;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+}
+
+.ai-overlay__close:hover {
+  color: #e5e5e5;
+}
+
+.ai-overlay__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  line-height: 1.6;
+}
+
+.ai-overlay__body pre {
+  background: #111;
+  padding: 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.ai-overlay__body code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+}
+
+/* ── Suggestion Bar ────────────────────────────────────────── */
+
+.suggestion-bar {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  background: #111111;
+  border-left: 3px solid #6366f1;
+  padding: 0 12px;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.suggestion-bar__text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: #d1d5db;
+}
+
+.suggestion-bar__hints {
+  font-size: 11px;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.suggestion-bar__hints kbd {
+  background: #1f2937;
+  border: 1px solid #374151;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* ── Input Bar ─────────────────────────────────────────────── */
+
+.input-bar {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  background: #111111;
+  border-top: 1px solid #222222;
+  padding: 0 12px;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.input-bar__prefix {
+  font-size: 16px;
+  font-weight: 700;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.input-bar__prefix--shell {
+  color: #6366f1;
+}
+
+.input-bar__prefix--ai {
+  color: #a78bfa;
+}
+
+.input-bar__prefix--pulse {
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.input-bar__input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: #e5e5e5;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  caret-color: #6366f1;
+}
+
+.input-bar__input::placeholder {
+  color: #374151;
+}
+
+/* ── Terminal / Editor View ───────────────────────────────── */
+
+.terminal-view,
+.editor-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #0a0a0a;
+}
+
+.terminal-view__xterm,
+.editor-view__xterm {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Browser View ─────────────────────────────────────────── */
+
+.browser-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.browser-view__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #111;
+  border-bottom: 1px solid #222;
+}
+
+.browser-view__url {
+  flex: 1;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #e5e5e5;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  padding: 4px 8px;
+  outline: none;
+}
+
+.browser-view__url:focus {
+  border-color: #6366f1;
+}
+
+.browser-view__btn {
+  background: none;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.browser-view__btn:hover {
+  color: #e5e5e5;
+  border-color: #555;
+}
+
+.browser-view__content {
+  flex: 1;
+  border: none;
+  background: #fff;
+}
+
+.browser-view__home {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #374151;
+  font-size: 16px;
+}
+
+/* ── Git View ─────────────────────────────────────────────── */
+
+.git-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.git-view__header {
+  padding: 8px 12px;
+  background: #111;
+  border-bottom: 1px solid #222;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.git-view__branch {
+  color: #6366f1;
+  font-weight: 700;
+}
+
+.git-view__panels {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.git-view__files {
+  width: 280px;
+  border-right: 1px solid #222;
+  overflow-y: auto;
+}
+
+.git-view__file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  border-bottom: 1px solid #111;
+}
+
+.git-view__file-item:hover,
+.git-view__file-item--active {
+  background: #1a1a1a;
+}
+
+.git-view__file-status {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.git-view__file-status--modified { background: #92400e; color: #fde68a; }
+.git-view__file-status--staged   { background: #14532d; color: #86efac; }
+.git-view__file-status--untracked { background: #1e3a5f; color: #93c5fd; }
+.git-view__file-status--deleted  { background: #7f1d1d; color: #fca5a5; }
+
+.git-view__diff {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+}
+
+.git-view__diff pre {
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.git-view__log {
+  border-top: 1px solid #222;
+  overflow-y: auto;
+  max-height: 200px;
+}
+
+.git-view__commit {
+  padding: 6px 12px;
+  border-bottom: 1px solid #111;
+  font-size: 11px;
+}
+
+.git-view__commit-sha {
+  color: #6366f1;
+  margin-right: 8px;
+}
+
+.git-view__commit-author {
+  color: #9ca3af;
+  margin-left: 8px;
+}
+
+/* ── Container View ───────────────────────────────────────── */
+
+.container-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.container-view__table {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.container-view__header-row,
+.container-view__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 80px 80px 1fr 120px;
+  padding: 6px 12px;
+  font-size: 12px;
+  border-bottom: 1px solid #111;
+  align-items: center;
+}
+
+.container-view__header-row {
+  color: #6b7280;
+  font-size: 10px;
+  background: #0d0d0d;
+  position: sticky;
+  top: 0;
+}
+
+.container-view__row {
+  cursor: pointer;
+}
+
+.container-view__row:hover {
+  background: #111;
+}
+
+.container-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+}
+
+.container-dot--running { background: #22c55e; }
+.container-dot--stopped { background: #ef4444; }
+.container-dot--other   { background: #f59e0b; }
+
+.container-view__actions {
+  display: flex;
+  gap: 4px;
+}
+
+.container-view__action-btn {
+  background: #1f2937;
+  border: 1px solid #374151;
+  border-radius: 3px;
+  color: #d1d5db;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 2px 6px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.container-view__action-btn:hover {
+  background: #374151;
+}
+
+.container-view__logs {
+  background: #0a0a0a;
+  border-top: 1px solid #222;
+  padding: 8px 12px;
+  font-size: 11px;
+  max-height: 150px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  color: #9ca3af;
+}
+
+.container-view__unavailable {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+/* ── Insights View ────────────────────────────────────────── */
+
+.insights-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.insights-view__metrics {
+  display: flex;
+  gap: 16px;
+  padding: 8px 12px;
+  background: #0d0d0d;
+  border-bottom: 1px solid #222;
+  font-size: 11px;
+}
+
+.insights-view__metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.insights-view__metric-label {
+  color: #6b7280;
+}
+
+.insights-view__metric-value {
+  color: #e5e5e5;
+  font-weight: 700;
+}
+
+.insights-view__tabs {
+  display: flex;
+  border-bottom: 1px solid #222;
+  background: #0d0d0d;
+}
+
+.insights-view__tab {
+  padding: 6px 16px;
+  font-size: 12px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: #6b7280;
+  border-bottom: 2px solid transparent;
+}
+
+.insights-view__tab:hover {
+  color: #e5e5e5;
+}
+
+.insights-view__tab--active {
+  color: #6366f1;
+  border-bottom-color: #6366f1;
+}
+
+.insights-view__content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.insights-view__item {
+  padding: 8px;
+  border-bottom: 1px solid #111;
+  font-size: 12px;
+}
+
+.insights-view__item-header {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+  color: #9ca3af;
+  font-size: 10px;
+}
+
+.insights-view__purge-btn {
+  margin: 12px;
+  padding: 8px 16px;
+  background: #7f1d1d;
+  border: 1px solid #991b1b;
+  border-radius: 4px;
+  color: #fca5a5;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+}
+
+.insights-view__purge-btn:hover {
+  background: #991b1b;
+}

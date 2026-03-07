@@ -1,0 +1,29 @@
+{
+  "productName": "aether-shell",
+  "version": "0.1.0",
+  "identifier": "dev.aether.shell",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.png"]
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Aether Shell",
+        "fullscreen": true,
+        "decorations": false,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

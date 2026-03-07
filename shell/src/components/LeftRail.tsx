@@ -1,0 +1,148 @@
+import { useEffect, useState } from 'preact/hooks'
+import { invoke } from '@tauri-apps/api/core'
+import { useApp, type ViewId } from '../context/AppContext'
+
+const VIEWS: { id: ViewId; label: string; shortcut: string; icon: () => preact.JSX.Element }[] = [
+  {
+    id: 'terminal',
+    label: 'Terminal',
+    shortcut: 'Ctrl+1',
+    icon: () => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="4 17 10 11 4 5" />
+        <line x1="12" y1="19" x2="20" y2="19" />
+      </svg>
+    ),
+  },
+  {
+    id: 'editor',
+    label: 'Editor',
+    shortcut: 'Ctrl+2',
+    icon: () => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'browser',
+    label: 'Browser',
+    shortcut: 'Ctrl+3',
+    icon: () => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="2" y1="12" x2="22" y2="12" />
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'git',
+    label: 'Git',
+    shortcut: 'Ctrl+4',
+    icon: () => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="18" cy="18" r="3" />
+        <circle cx="6" cy="6" r="3" />
+        <path d="M13 6h3a2 2 0 0 1 2 2v7" />
+        <line x1="6" y1="9" x2="6" y2="21" />
+      </svg>
+    ),
+  },
+  {
+    id: 'containers',
+    label: 'Containers',
+    shortcut: 'Ctrl+5',
+    icon: () => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+        <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+      </svg>
+    ),
+  },
+  {
+    id: 'insights',
+    label: 'Insights',
+    shortcut: 'Ctrl+6',
+    icon: () => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="20" x2="18" y2="10" />
+        <line x1="12" y1="20" x2="12" y2="4" />
+        <line x1="6" y1="20" x2="6" y2="14" />
+      </svg>
+    ),
+  },
+]
+
+interface StatusData {
+  status: string
+  rss_mb: number
+  cactus_mode?: string
+}
+
+export function LeftRail() {
+  const { activeView, setActiveView } = useApp()
+  const [daemonStatus, setDaemonStatus] = useState<StatusData | null>(null)
+
+  // Keyboard shortcuts Mod+1 through Mod+6
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (!e.ctrlKey) return
+      const n = parseInt(e.key)
+      if (n >= 1 && n <= 6) {
+        e.preventDefault()
+        setActiveView(VIEWS[n - 1].id)
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [setActiveView])
+
+  // Poll daemon status every 30 seconds
+  useEffect(() => {
+    async function poll() {
+      try {
+        const resp = await invoke<StatusData>('daemon_status')
+        setDaemonStatus(resp)
+      } catch {
+        setDaemonStatus(null)
+      }
+    }
+    poll()
+    const id = setInterval(poll, 30_000)
+    return () => clearInterval(id)
+  }, [])
+
+  const connected = daemonStatus?.status === 'ok'
+  const rssMb = daemonStatus?.rss_mb ?? 0
+  const cactusMode = daemonStatus?.cactus_mode ?? 'local'
+
+  return (
+    <nav class="left-rail" aria-label="Navigation">
+      <div class="left-rail__icons">
+        {VIEWS.map((v) => (
+          <button
+            key={v.id}
+            class={`left-rail__btn${activeView === v.id ? ' left-rail__btn--active' : ''}`}
+            onClick={() => setActiveView(v.id)}
+            title={`${v.label} (${v.shortcut})`}
+            aria-label={v.label}
+            aria-current={activeView === v.id ? 'page' : undefined}
+          >
+            <v.icon />
+          </button>
+        ))}
+      </div>
+
+      <div class="left-rail__status">
+        <span
+          class={`left-rail__dot${connected ? ' left-rail__dot--ok' : ' left-rail__dot--err'}`}
+          title={connected ? 'Daemon connected' : 'Daemon disconnected'}
+        />
+        <span class="left-rail__label" title="Cactus mode">{cactusMode}</span>
+        <span class="left-rail__label" title="Memory usage">{rssMb}MB</span>
+      </div>
+    </nav>
+  )
+}
