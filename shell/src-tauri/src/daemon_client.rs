@@ -433,6 +433,89 @@ pub fn subscribe_suggestions(app: AppHandle, socket_path: String) {
 }
 
 // ---------------------------------------------------------------------------
+// Push subscription — actuations
+// ---------------------------------------------------------------------------
+
+/// Spawns a background thread that opens a dedicated socket connection for
+/// receiving actuation push events from the daemon. Each received JSON line
+/// is emitted as a `daemon-actuation` Tauri event.
+#[allow(dead_code)]
+pub fn subscribe_actuations(app: AppHandle, socket_path: String) {
+    thread::spawn(move || {
+        let mut attempt: u32 = 0;
+        loop {
+            if attempt > 0 {
+                thread::sleep(RECONNECT_BACKOFF);
+            }
+            attempt += 1;
+
+            let stream = match UnixStream::connect(&socket_path) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!(
+                        "subscribe_actuations: connect attempt {}: {}",
+                        attempt, e
+                    );
+                    if attempt >= MAX_RECONNECT_ATTEMPTS {
+                        eprintln!("subscribe_actuations: giving up after {} attempts", attempt);
+                        return;
+                    }
+                    continue;
+                }
+            };
+
+            let req = Request {
+                method: "subscribe_actuations",
+                payload: serde_json::Value::Null,
+            };
+            let mut frame = match serde_json::to_string(&req) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("subscribe_actuations: serialize: {}", e);
+                    return;
+                }
+            };
+            frame.push('\n');
+
+            let mut write_stream = match stream.try_clone() {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("subscribe_actuations: clone stream: {}", e);
+                    continue;
+                }
+            };
+
+            if let Err(e) = write_stream.write_all(frame.as_bytes()) {
+                eprintln!("subscribe_actuations: write subscribe frame: {}", e);
+                continue;
+            }
+
+            let reader = BufReader::new(stream);
+            for line_result in reader.lines() {
+                match line_result {
+                    Ok(line) if line.is_empty() => continue,
+                    Ok(line) => {
+                        match serde_json::from_str::<serde_json::Value>(&line) {
+                            Ok(payload) => {
+                                if let Err(e) = app.emit("daemon-actuation", payload) {
+                                    eprintln!("subscribe_actuations: emit: {}", e);
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("subscribe_actuations: parse push event: {}", e);
+                            }
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+
+            attempt = 0;
+        }
+    });
+}
+
+// ---------------------------------------------------------------------------
 // Tauri commands
 // ---------------------------------------------------------------------------
 
