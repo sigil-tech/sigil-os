@@ -14,6 +14,8 @@ interface AppState {
   setInputMode: (m: InputMode) => void
   split: SplitState
   setSplit: (s: SplitState) => void
+  isPaletteOpen: boolean
+  setIsPaletteOpen: (v: boolean) => void
 }
 
 const AppCtx = createContext<AppState>({
@@ -23,12 +25,15 @@ const AppCtx = createContext<AppState>({
   setInputMode: () => {},
   split: defaultSplit,
   setSplit: () => {},
+  isPaletteOpen: false,
+  setIsPaletteOpen: () => {},
 })
 
 export function AppProvider({ children }: { children: preact.ComponentChildren }) {
   const [activeView, rawSetActiveView] = useState<ViewId>('terminal')
   const [inputMode, setInputMode] = useState<InputMode>('shell')
   const [split, setSplit] = useState<SplitState>(defaultSplit)
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false)
 
   function setActiveView(v: ViewId) {
     rawSetActiveView(v)
@@ -48,7 +53,7 @@ export function AppProvider({ children }: { children: preact.ComponentChildren }
   }
 
   return (
-    <AppCtx.Provider value={{ activeView, setActiveView, inputMode, setInputMode, split, setSplit }}>
+    <AppCtx.Provider value={{ activeView, setActiveView, inputMode, setInputMode, split, setSplit, isPaletteOpen, setIsPaletteOpen }}>
       {children}
     </AppCtx.Provider>
   )

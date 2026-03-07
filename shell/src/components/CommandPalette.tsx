@@ -1,0 +1,201 @@
+import { useEffect, useRef, useState } from 'preact/hooks'
+import { invoke } from '@tauri-apps/api/core'
+import { emit } from '@tauri-apps/api/event'
+import { useApp, type ViewId } from '../context/AppContext'
+
+interface PaletteItem {
+  id: string
+  label: string
+  description?: string
+  action: () => void | Promise<void>
+}
+
+/** Subsequence fuzzy match — returns score > 0 if all chars of query appear in label in order. */
+function fuzzyScore(query: string, label: string): number {
+  const q = query.toLowerCase()
+  const l = label.toLowerCase()
+  let qi = 0
+  let score = 0
+  for (let li = 0; li < l.length && qi < q.length; li++) {
+    if (l[li] === q[qi]) {
+      score += 1
+      qi++
+    }
+  }
+  return qi === q.length ? score : 0
+}
+
+const TOOL_VIEWS: { id: ViewId; label: string }[] = [
+  { id: 'terminal', label: 'Switch to Terminal' },
+  { id: 'editor', label: 'Switch to Editor' },
+  { id: 'browser', label: 'Switch to Browser' },
+  { id: 'git', label: 'Switch to Git' },
+  { id: 'containers', label: 'Switch to Containers' },
+  { id: 'insights', label: 'Switch to Insights' },
+]
+
+export function CommandPalette() {
+  const { isPaletteOpen, setIsPaletteOpen, setActiveView } = useApp()
+  const [query, setQuery] = useState('')
+  const [selected, setSelected] = useState(0)
+  const [dynamicItems, setDynamicItems] = useState<PaletteItem[]>([])
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Build static items
+  const staticItems: PaletteItem[] = [
+    ...TOOL_VIEWS.map((v) => ({
+      id: `view-${v.id}`,
+      label: v.label,
+      description: `Ctrl+${TOOL_VIEWS.indexOf(v) + 1}`,
+      action: () => setActiveView(v.id),
+    })),
+    {
+      id: 'cmd-trigger-summary',
+      label: 'Trigger analysis',
+      description: 'aetherctl trigger-summary',
+      action: () => invoke('daemon_trigger_summary').catch(() => {}),
+    },
+    {
+      id: 'cmd-status',
+      label: 'aetherctl status',
+      description: 'Show daemon status',
+      action: () => emit('execute-action', { cmd: 'aetherctl status' }).catch(() => {}),
+    },
+    {
+      id: 'cmd-events',
+      label: 'aetherctl events',
+      description: 'Show recent events',
+      action: () => emit('execute-action', { cmd: 'aetherctl events' }).catch(() => {}),
+    },
+    {
+      id: 'cmd-actions',
+      label: 'aetherctl actions',
+      description: 'Show undoable actions',
+      action: () => emit('execute-action', { cmd: 'aetherctl actions' }).catch(() => {}),
+    },
+    {
+      id: 'cmd-suggestions',
+      label: 'View suggestions',
+      description: 'aetherctl suggestions',
+      action: () => { setActiveView('insights') },
+    },
+  ]
+
+  // Load dynamic items on open
+  useEffect(() => {
+    if (!isPaletteOpen) return
+    setQuery('')
+    setSelected(0)
+
+    async function load() {
+      const items: PaletteItem[] = []
+      try {
+        const files = await invoke<{ path: string; count: number }[]>('daemon_files')
+        for (const f of files.slice(0, 10)) {
+          items.push({
+            id: `file-${f.path}`,
+            label: f.path.split('/').pop() || f.path,
+            description: f.path,
+            action: () => emit('execute-action', { cmd: `nvim ${f.path}` }).catch(() => {}),
+          })
+        }
+      } catch { /* daemon may be offline */ }
+
+      try {
+        const cmds = await invoke<{ cmd: string; count: number }[]>('daemon_commands')
+        for (const c of cmds.slice(0, 10)) {
+          items.push({
+            id: `cmd-recent-${c.cmd}`,
+            label: c.cmd,
+            description: `Run: ${c.cmd}`,
+            action: () => emit('execute-action', { cmd: c.cmd }).catch(() => {}),
+          })
+        }
+      } catch { /* daemon may be offline */ }
+
+      setDynamicItems(items)
+    }
+    load()
+
+    // Focus input after render
+    setTimeout(() => inputRef.current?.focus(), 50)
+  }, [isPaletteOpen])
+
+  if (!isPaletteOpen) return null
+
+  const allItems = [...staticItems, ...dynamicItems]
+  const filtered = query
+    ? allItems
+        .map((item) => ({ item, score: fuzzyScore(query, item.label) }))
+        .filter((r) => r.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .map((r) => r.item)
+    : allItems
+
+  function execute(item: PaletteItem) {
+    setIsPaletteOpen(false)
+    item.action()
+  }
+
+  function handleKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      setIsPaletteOpen(false)
+      return
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setSelected((s) => Math.min(s + 1, filtered.length - 1))
+      return
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setSelected((s) => Math.max(s - 1, 0))
+      return
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      if (filtered[selected]) execute(filtered[selected])
+      return
+    }
+  }
+
+  return (
+    <div class="palette-overlay" onClick={() => setIsPaletteOpen(false)}>
+      <div class="palette" onClick={(e) => e.stopPropagation()}>
+        <input
+          ref={inputRef}
+          class="palette__input"
+          type="text"
+          value={query}
+          onInput={(e) => {
+            setQuery((e.target as HTMLInputElement).value)
+            setSelected(0)
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder="Type a command..."
+          autocomplete="off"
+          spellcheck={false}
+        />
+        <div class="palette__list">
+          {filtered.map((item, i) => (
+            <div
+              key={item.id}
+              class={`palette__item${i === selected ? ' palette__item--selected' : ''}`}
+              onClick={() => execute(item)}
+              onMouseEnter={() => setSelected(i)}
+            >
+              <span class="palette__item-label">{item.label}</span>
+              {item.description && (
+                <span class="palette__item-desc">{item.description}</span>
+              )}
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <div class="palette__empty">No matching commands</div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
