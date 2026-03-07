@@ -63,6 +63,12 @@ export function InputBar({ activePtyId }: { activePtyId?: string }) {
       handleSubmit()
       return
     }
+    // Ctrl+Z with empty input: undo last daemon action
+    if (e.ctrlKey && e.key === 'z' && !value) {
+      e.preventDefault()
+      invoke('daemon_undo').catch(() => {})
+      return
+    }
     if (e.key === 'ArrowUp') {
       e.preventDefault()
       const next = Math.min(histIdx + 1, history.length - 1)

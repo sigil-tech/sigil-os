@@ -29,6 +29,7 @@ fn main() {
             daemon_client::daemon_feedback,
             daemon_client::daemon_ai_query,
             daemon_client::daemon_view_changed,
+            daemon_client::daemon_undo,
             // PTY
             pty::spawn_pty,
             pty::pty_write,

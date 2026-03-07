@@ -324,6 +324,11 @@ impl DaemonClient {
         Ok(())
     }
 
+    /// Requests the daemon to undo the most recent undoable action.
+    pub fn undo(&mut self) -> Result<serde_json::Value, String> {
+        self.call("undo", serde_json::Value::Null)
+    }
+
     /// Notifies the daemon that the active tool view has changed.
     pub fn view_changed(&mut self, view: &str) -> Result<(), String> {
         let payload = serde_json::json!({ "view": view });
@@ -593,6 +598,14 @@ pub fn daemon_feedback(
         .lock()
         .unwrap()
         .feedback(&kind, detail.as_deref())
+}
+
+/// Requests the daemon to undo the most recent undoable action.
+#[tauri::command]
+pub fn daemon_undo(
+    state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
+) -> Result<serde_json::Value, String> {
+    state.lock().unwrap().undo()
 }
 
 /// Notifies the daemon that the active tool view has changed, triggering
