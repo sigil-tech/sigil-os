@@ -5,6 +5,7 @@ mod containers;
 mod daemon_client;
 mod editor;
 mod git;
+mod hyprland;
 mod pty;
 
 use daemon_client::DaemonClient;
@@ -41,6 +42,8 @@ fn main() {
             git::git_status,
             git::git_diff,
             git::git_branch,
+            // Hyprland
+            hyprland::pop_out_tool,
             // Containers
             containers::containers_list,
             containers::container_start,

@@ -85,9 +85,14 @@ export function LeftRail() {
   const { activeView, setActiveView } = useApp()
   const [daemonStatus, setDaemonStatus] = useState<StatusData | null>(null)
 
-  // Keyboard shortcuts Mod+1 through Mod+6
+  // Keyboard shortcuts Mod+1 through Mod+6, Ctrl+Shift+O for pop-out
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
+      if (e.ctrlKey && e.shiftKey && e.key === 'O') {
+        e.preventDefault()
+        invoke('pop_out_tool', { tool: activeView }).catch(() => {})
+        return
+      }
       if (!e.ctrlKey) return
       const n = parseInt(e.key)
       if (n >= 1 && n <= 6) {
@@ -97,7 +102,7 @@ export function LeftRail() {
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [setActiveView])
+  }, [setActiveView, activeView])
 
   // Poll daemon status every 30 seconds
   useEffect(() => {
@@ -134,6 +139,19 @@ export function LeftRail() {
           </button>
         ))}
       </div>
+
+      <button
+        class="left-rail__btn left-rail__btn--popout"
+        onClick={() => invoke('pop_out_tool', { tool: activeView }).catch(() => {})}
+        title="Pop out to Hyprland window (Ctrl+Shift+O)"
+        aria-label="Pop out tool"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+          <polyline points="15 3 21 3 21 9" />
+          <line x1="10" y1="14" x2="21" y2="3" />
+        </svg>
+      </button>
 
       <div class="left-rail__status">
         <span
