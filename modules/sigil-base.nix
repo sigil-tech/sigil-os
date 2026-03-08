@@ -1,14 +1,13 @@
 { config, pkgs, lib, ... }:
 {
   # System basics
-  networking.hostName = "sigil";
-  time.timeZone = "UTC";
+  networking.hostName = lib.mkDefault "sigil";
+  time.timeZone = lib.mkDefault "UTC";
 
   # Essential developer packages
   environment.systemPackages = with pkgs; [
     git
     neovim
-    docker
     lazygit
     ripgrep
     fd
@@ -16,16 +15,12 @@
     htop
     go
     nodejs
-    rustup
   ];
-
-  # Docker
-  virtualisation.docker.enable = true;
 
   # User
   users.users.engineer = {
     isNormalUser = true;
-    extraGroups = [ "wheel" "docker" "video" "audio" ];
+    extraGroups = [ "wheel" "video" "audio" "networkmanager" ];
     shell = pkgs.zsh;
   };
 
@@ -33,7 +28,7 @@
   programs.zsh.enable = true;
 
   # Allow unfree (for broadcom, etc.)
-  nixpkgs.config.allowUnfree = true;
+  nixpkgs.config.allowUnfree = lib.mkDefault true;
 
-  system.stateVersion = "25.05";
+  system.stateVersion = lib.mkDefault "25.05";
 }

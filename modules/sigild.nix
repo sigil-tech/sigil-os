@@ -1,6 +1,8 @@
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, sigild ? null, ... }:
 with lib;
-let cfg = config.services.sigild;
+let
+  cfg = config.services.sigild;
+  sigildPkg = if sigild != null then sigild else pkgs.sigild;
 in {
   options.services.sigild = {
     enable = mkEnableOption "Sigil daemon";
@@ -85,6 +87,9 @@ in {
   };
 
   config = mkIf cfg.enable {
+    # Make sigild and sigilctl available system-wide
+    environment.systemPackages = [ sigildPkg ];
+
     # Generate config file
     environment.etc."sigil/config.toml".text = ''
       [daemon]
@@ -119,7 +124,7 @@ in {
       after = [ "network.target" ];
 
       serviceConfig = {
-        ExecStart = "${pkgs.sigild or "/usr/local/bin/sigild"} -config /etc/sigil/config.toml";
+        ExecStart = "${sigildPkg}/bin/sigild -config /etc/sigil/config.toml";
         Restart = "on-failure";
         RestartSec = 5;
 
@@ -129,6 +134,7 @@ in {
         ReadWritePaths = [
           "~/.local/share/sigild"
           "~/.config/sigil"
+          "~/.cache/sigil"
         ];
         NoNewPrivileges = true;
         PrivateTmp = true;

@@ -3,19 +3,32 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
-    home-manager = {
-      url = "github:nix-community/home-manager";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
-  outputs = { self, nixpkgs, home-manager }: let
+  outputs = { self, nixpkgs }: let
     system = "x86_64-linux";
     pkgs = nixpkgs.legacyPackages.${system};
+
+    # Build sigild + sigilctl from local source
+    sigild = pkgs.buildGoModule {
+      pname = "sigild";
+      version = "0.1.0-dev";
+      src = ../sigil;
+      subPackages = [ "cmd/sigild" "cmd/sigilctl" ];
+      # First build will fail with the correct hash — update this value.
+      # Set to "" and run: nix build .#sigild 2>&1 | grep 'got:'
+      vendorHash = null;
+    };
   in {
-    # Full NixOS system configuration
+    packages.${system} = {
+      inherit sigild;
+      default = sigild;
+    };
+
+    # Full NixOS system configuration (for installed systems)
     nixosConfigurations.sigil = nixpkgs.lib.nixosSystem {
       inherit system;
+      specialArgs = { inherit sigild; };
       modules = [
         ./modules/sigil-base.nix
         ./modules/sigil-hyprland.nix
@@ -25,28 +38,20 @@
       ];
     };
 
-    # Installer ISO
+    # Live ISO — boots directly into Sigil OS from USB
     nixosConfigurations.sigil-iso = nixpkgs.lib.nixosSystem {
       inherit system;
+      specialArgs = { inherit sigild; };
       modules = [
         "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
         "${nixpkgs}/nixos/modules/installer/cd-dvd/channel.nix"
+        ./modules/sigil-base.nix
+        ./modules/sigil-hyprland.nix
+        ./modules/sigild.nix
+        ./modules/sigil-shell.nix
+        ./modules/sigil-inference.nix
         ./iso.nix
       ];
-    };
-
-    # Individual packages
-    packages.${system} = {
-      sigild = pkgs.buildGoModule {
-        pname = "sigild";
-        version = "0.1.0-dev";
-        src = builtins.fetchGit {
-          url = "https://github.com/wambozi/sigil";
-          ref = "main";
-        };
-        subPackages = [ "cmd/sigild" "cmd/sigilctl" ];
-        vendorHash = null; # set after first build
-      };
     };
   };
 }

@@ -7,7 +7,7 @@ in {
 
     modelName = mkOption {
       type = types.str;
-      default = "lfm2-24b-a2b-q4_k_m";
+      default = "qwen2.5-1.5b-q4_k_m";
       description = "Model name to download and use";
     };
   };

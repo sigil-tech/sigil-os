@@ -19,7 +19,7 @@ in {
   };
 
   config = mkIf cfg.enable {
-    home.file.".config/sigil-shell/theme.css".text = ''
+    environment.etc."sigil-shell/theme.css".text = ''
       :root {
         --color-bg:         ${cfg.theme.background};
         --color-fg:         ${cfg.theme.foreground};
