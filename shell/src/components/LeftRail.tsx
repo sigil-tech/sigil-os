@@ -78,7 +78,7 @@ const VIEWS: { id: ViewId; label: string; shortcut: string; icon: () => preact.J
 interface StatusData {
   status: string
   rss_mb: number
-  cactus_mode?: string
+  inference_mode?: string
 }
 
 export function LeftRail() {
@@ -121,7 +121,7 @@ export function LeftRail() {
 
   const connected = daemonStatus?.status === 'ok'
   const rssMb = daemonStatus?.rss_mb ?? 0
-  const cactusMode = daemonStatus?.cactus_mode ?? 'local'
+  const inferenceMode = daemonStatus?.inference_mode ?? 'local'
 
   return (
     <nav class="left-rail" aria-label="Navigation">
@@ -158,7 +158,7 @@ export function LeftRail() {
           class={`left-rail__dot${connected ? ' left-rail__dot--ok' : ' left-rail__dot--err'}`}
           title={connected ? 'Daemon connected' : 'Daemon disconnected'}
         />
-        <span class="left-rail__label" title="Cactus mode">{cactusMode}</span>
+        <span class="left-rail__label" title="Inference mode">{inferenceMode}</span>
         <span class="left-rail__label" title="Memory usage">{rssMb}MB</span>
       </div>
     </nav>

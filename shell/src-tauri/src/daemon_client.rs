@@ -645,7 +645,7 @@ pub fn daemon_fleet_opt_out(
     state.lock().unwrap().fleet_opt_out()
 }
 
-/// Sends an AI query to the daemon via the Cactus routing layer.
+/// Sends an AI query to the daemon via the inference engine.
 #[tauri::command]
 pub fn daemon_ai_query(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
