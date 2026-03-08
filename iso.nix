@@ -15,6 +15,7 @@
   hardware.wirelessRegulatoryDatabase = true;
 
   # NetworkManager for easy WiFi setup on live boot
+  networking.wireless.enable = lib.mkForce false;
   networking.networkmanager.enable = true;
 
   # Enable Sigil services on the live system

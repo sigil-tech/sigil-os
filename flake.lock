@@ -18,7 +18,24 @@
     },
     "root": {
       "inputs": {
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "sigil-src": "sigil-src"
+      }
+    },
+    "sigil-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1772995142,
+        "narHash": "sha256-8IdxiDh1gsLcrfzfQh9d+QNsDsjTQYCCgI1LKvlJ1fU=",
+        "ref": "refs/heads/main",
+        "rev": "d31b8f33b35ea9547920395de73c932bfa321337",
+        "revCount": 64,
+        "type": "git",
+        "url": "file:///home/nick/workspace/sigil"
+      },
+      "original": {
+        "type": "git",
+        "url": "file:///home/nick/workspace/sigil"
       }
     }
   },

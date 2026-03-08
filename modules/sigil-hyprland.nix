@@ -12,6 +12,14 @@
     };
   };
 
+  # Fonts
+  fonts.packages = with pkgs; [
+    ibm-plex
+    dejavu_fonts
+    nerd-fonts.jetbrains-mono
+  ];
+  fonts.fontconfig.defaultFonts.monospace = [ "IBM Plex Mono" "DejaVu Sans Mono" ];
+
   # Essential Wayland tools
   environment.systemPackages = with pkgs; [
     waybar
@@ -20,7 +28,7 @@
     wl-clipboard
     grim
     slurp
-    foot # fallback terminal
+    foot
   ];
 
   # XDG portal for Wayland
@@ -29,26 +37,23 @@
     extraPortals = [ pkgs.xdg-desktop-portal-hyprland ];
   };
 
-  # Hyprland config via home-manager or direct file
-  # The shell launches full-screen as the primary workspace app
-  environment.etc."hypr/hyprland.conf".text = ''
+  # Write Hyprland config to engineer's home directory
+  # Hyprland reads from ~/.config/hypr/hyprland.conf
+  system.activationScripts.hyprlandConfig = ''
+    mkdir -p /home/engineer/.config/hypr
+    cat > /home/engineer/.config/hypr/hyprland.conf << 'HYPRCONF'
     # Sigil OS Hyprland Configuration
 
     monitor=,preferred,auto,1
 
-    # Auto-start Sigil Shell
-    exec-once = sigil-shell
-
-    # Window rules: shell is full-screen, no decorations
-    windowrulev2 = fullscreen, class:^(sigil-shell)$
-    windowrulev2 = noblur, class:^(sigil-shell)$
-    windowrulev2 = noshadow, class:^(sigil-shell)$
+    # Auto-start: terminal + waybar
+    exec-once = foot
+    exec-once = waybar -c /etc/waybar/config -s /etc/waybar/style.css
 
     # Global keybinds
     $mod = SUPER
 
-    bind = $mod, Return, focuswindow, class:^(sigil-shell)$
-    bind = $mod SHIFT, Return, exec, foot  # fallback terminal
+    bind = $mod, Return, exec, foot
     bind = $mod, Q, killactive
     bind = $mod SHIFT, E, exit
 
@@ -90,6 +95,20 @@
       kb_layout = us
       follow_mouse = 1
     }
+HYPRCONF
+    chown -R engineer:users /home/engineer/.config/hypr
+
+    mkdir -p /home/engineer/.config/foot
+    cat > /home/engineer/.config/foot/foot.ini << 'FOOTCONF'
+[main]
+font=IBM Plex Mono:size=13
+font-bold=IBM Plex Mono:weight=bold:size=13
+
+[colors]
+background=0a0a0a
+foreground=e5e5e5
+FOOTCONF
+    chown -R engineer:users /home/engineer/.config/foot
   '';
 
   # Waybar configuration for daemon status

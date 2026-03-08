@@ -3,9 +3,13 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    sigil-src = {
+      url = "git+file:///home/nick/workspace/sigil";
+      flake = false;
+    };
   };
 
-  outputs = { self, nixpkgs }: let
+  outputs = { self, nixpkgs, sigil-src }: let
     system = "x86_64-linux";
     pkgs = nixpkgs.legacyPackages.${system};
 
@@ -13,10 +17,8 @@
     sigild = pkgs.buildGoModule {
       pname = "sigild";
       version = "0.1.0-dev";
-      src = ../sigil;
+      src = sigil-src;
       subPackages = [ "cmd/sigild" "cmd/sigilctl" ];
-      # First build will fail with the correct hash — update this value.
-      # Set to "" and run: nix build .#sigild 2>&1 | grep 'got:'
       vendorHash = null;
     };
   in {
