@@ -91,4 +91,42 @@
       follow_mouse = 1
     }
   '';
+
+  # Waybar configuration for daemon status
+  environment.etc."waybar/config".text = builtins.toJSON {
+    layer = "top";
+    position = "bottom";
+    height = 24;
+    modules-left = [ "hyprland/workspaces" ];
+    modules-center = [];
+    modules-right = [ "custom/sigild" "memory" "clock" ];
+    "custom/sigild" = {
+      exec = "sigilctl status --json 2>/dev/null | jq -r '\"sigild: \" + .status + \" | \" + .inference_mode'";
+      interval = 30;
+      format = "{}";
+    };
+    memory = {
+      format = "{}% mem";
+      interval = 10;
+    };
+    clock = {
+      format = "{:%H:%M}";
+    };
+  };
+
+  environment.etc."waybar/style.css".text = ''
+    * {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 12px;
+      color: #e5e5e5;
+    }
+    window#waybar {
+      background: #0a0a0a;
+      border-top: 1px solid #222222;
+    }
+    #custom-sigild {
+      color: #6366f1;
+      padding: 0 8px;
+    }
+  '';
 }
