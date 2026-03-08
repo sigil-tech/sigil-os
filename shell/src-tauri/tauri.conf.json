@@ -1,7 +1,7 @@
 {
-  "productName": "aether-shell",
+  "productName": "sigil-shell",
   "version": "0.1.0",
-  "identifier": "dev.aether.shell",
+  "identifier": "dev.sigil.shell",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:5173",
@@ -16,7 +16,7 @@
   "app": {
     "windows": [
       {
-        "title": "Aether Shell",
+        "title": "Sigil Shell",
         "fullscreen": true,
         "decorations": false,
         "transparent": false

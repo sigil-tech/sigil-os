@@ -17,18 +17,18 @@ fn hyprland_dispatch(cmd: &str) -> Result<(), String> {
 
 /// Pops the current tool out into a new Hyprland floating window.
 /// For terminal/editor: spawns a new terminal with the current PTY's shell.
-/// For other tools: spawns a new aether-shell instance in that tool's view.
+/// For other tools: spawns a new sigil-shell instance in that tool's view.
 #[tauri::command]
 pub fn pop_out_tool(tool: String) -> Result<(), String> {
     let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
     match tool.as_str() {
         "terminal" | "editor" => {
-            hyprland_dispatch(&format!("exec kitty --class aether-popout {}", shell))?;
+            hyprland_dispatch(&format!("exec kitty --class sigil-popout {}", shell))?;
         }
         _ => {
-            hyprland_dispatch("exec kitty --class aether-popout aetherctl status")?;
+            hyprland_dispatch("exec kitty --class sigil-popout sigilctl status")?;
         }
     }
-    hyprland_dispatch("exec hyprctl --batch 'keyword windowrulev2 float,class:aether-popout'")?;
+    hyprland_dispatch("exec hyprctl --batch 'keyword windowrulev2 float,class:sigil-popout'")?;
     Ok(())
 }

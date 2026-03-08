@@ -119,7 +119,7 @@ export function BrowserView() {
           title="Browser"
         />
       ) : (
-        <div class="browser-view__home">Aether Browser</div>
+        <div class="browser-view__home">Sigil Browser</div>
       )}
     </div>
   )

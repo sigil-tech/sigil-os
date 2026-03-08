@@ -1,4 +1,4 @@
-// daemon_client.rs — Unix socket client for the aetherd daemon.
+// daemon_client.rs — Unix socket client for the sigild daemon.
 //
 // Sends newline-delimited JSON requests and reads newline-delimited JSON
 // responses. Reconnects automatically on socket drop with a 2-second backoff,
@@ -113,9 +113,9 @@ pub struct AIQueryResponse {
 const MAX_RECONNECT_ATTEMPTS: u32 = 10;
 const RECONNECT_BACKOFF: Duration = Duration::from_secs(2);
 
-/// DaemonClient manages the connection to the aetherd Unix socket.
+/// DaemonClient manages the connection to the sigild Unix socket.
 ///
-/// The socket path defaults to `/run/user/$UID/aetherd.sock` but can be
+/// The socket path defaults to `/run/user/$UID/sigild.sock` but can be
 /// overridden at construction time. Reconnection is handled transparently
 /// inside `call`, up to `MAX_RECONNECT_ATTEMPTS` attempts with a fixed
 /// 2-second backoff.
@@ -129,7 +129,7 @@ impl DaemonClient {
     /// from the current user's UID.
     pub fn new() -> Self {
         let uid = get_uid();
-        let socket_path = format!("/run/user/{}/aetherd.sock", uid);
+        let socket_path = format!("/run/user/{}/sigild.sock", uid);
         Self {
             socket_path,
             stream: None,

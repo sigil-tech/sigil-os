@@ -85,7 +85,7 @@ export function SuggestionBar() {
   }
 
   function openHistory() {
-    emit('execute-action', { cmd: 'aetherctl suggestions' }).catch(() => {})
+    emit('execute-action', { cmd: 'sigilctl suggestions' }).catch(() => {})
   }
 
   if (!current) return null

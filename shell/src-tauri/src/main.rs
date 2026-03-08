@@ -22,7 +22,7 @@ fn main() {
         .ok()
         .map(std::path::PathBuf::from)
         .or_else(|| std::env::var("HOME").ok().map(|h| std::path::PathBuf::from(h).join(".config")))
-        .map(|d| d.join("aether-shell").join("theme.css"))
+        .map(|d| d.join("sigil-shell").join("theme.css"))
         .and_then(|p| std::fs::read_to_string(p).ok());
 
     tauri::Builder::default()
