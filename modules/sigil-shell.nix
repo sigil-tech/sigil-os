@@ -1,9 +1,9 @@
 { config, lib, pkgs, ... }:
 with lib;
-let cfg = config.services.aether-shell;
+let cfg = config.services.sigil-shell;
 in {
-  options.services.aether-shell = {
-    enable = mkEnableOption "Aether Shell";
+  options.services.sigil-shell = {
+    enable = mkEnableOption "Sigil Shell";
     theme = {
       background    = mkOption { type = types.str; default = "#0a0a0a"; description = "Background color"; };
       foreground    = mkOption { type = types.str; default = "#e5e5e5"; description = "Foreground color"; };
@@ -19,7 +19,7 @@ in {
   };
 
   config = mkIf cfg.enable {
-    home.file.".config/aether-shell/theme.css".text = ''
+    home.file.".config/sigil-shell/theme.css".text = ''
       :root {
         --color-bg:         ${cfg.theme.background};
         --color-fg:         ${cfg.theme.foreground};

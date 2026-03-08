@@ -1,8 +1,8 @@
 { config, lib, ... }:
 with lib;
 {
-  options.services.aether-shell.keybindings = {
-    enable = mkEnableOption "Aether Shell dynamic keybinding profiles";
+  options.services.sigil-shell.keybindings = {
+    enable = mkEnableOption "Sigil Shell dynamic keybinding profiles";
     profiles = mkOption {
       type = types.attrsOf (types.attrsOf types.str);
       default = {

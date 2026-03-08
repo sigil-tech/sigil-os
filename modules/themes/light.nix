@@ -1,4 +1,4 @@
-# Example light theme — import into flake.nix and set services.aether-shell.theme.*
+# Example light theme — import into flake.nix and set services.sigil-shell.theme.*
 {
   background   = "#f5f5f5";
   foreground   = "#1a1a1a";
