@@ -336,6 +336,17 @@ impl DaemonClient {
         Ok(())
     }
 
+    /// Returns a preview of the fleet report payload without sending it.
+    pub fn fleet_preview(&mut self) -> Result<serde_json::Value, String> {
+        self.call("fleet-preview", serde_json::Value::Null)
+    }
+
+    /// Opts out of fleet reporting and clears the pending queue.
+    pub fn fleet_opt_out(&mut self) -> Result<(), String> {
+        self.call("fleet-opt-out", serde_json::Value::Null)?;
+        Ok(())
+    }
+
     /// Sends a natural-language query to the daemon's AI routing layer.
     ///
     /// Returns the AI response along with the routing decision and measured
@@ -616,6 +627,22 @@ pub fn daemon_view_changed(
     view: String,
 ) -> Result<(), String> {
     state.lock().unwrap().view_changed(&view)
+}
+
+/// Returns a preview of the fleet report data.
+#[tauri::command]
+pub fn daemon_fleet_preview(
+    state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
+) -> Result<serde_json::Value, String> {
+    state.lock().unwrap().fleet_preview()
+}
+
+/// Opts out of fleet reporting.
+#[tauri::command]
+pub fn daemon_fleet_opt_out(
+    state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
+) -> Result<(), String> {
+    state.lock().unwrap().fleet_opt_out()
 }
 
 /// Sends an AI query to the daemon via the Cactus routing layer.

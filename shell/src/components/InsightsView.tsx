@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks'
 import { invoke } from '@tauri-apps/api/core'
 import { useApp } from '../context/AppContext'
 
-type InsightsTab = 'events' | 'patterns' | 'ai-history' | 'prompts'
+type InsightsTab = 'events' | 'patterns' | 'ai-history' | 'prompts' | 'team-insights'
 
 interface ShellEvent {
   id: string
@@ -24,6 +24,8 @@ export function InsightsView() {
   const [events, setEvents] = useState<ShellEvent[]>([])
   const [patterns, setPatterns] = useState<Pattern[]>([])
   const [metrics] = useState({ total: 0, localPct: 0, acceptPct: 0 })
+  const [fleetPreview, setFleetPreview] = useState<any>(null)
+  const [fleetEnabled, setFleetEnabled] = useState(true)
 
   const isActive = activeView === 'insights'
 
@@ -45,6 +47,28 @@ export function InsightsView() {
     const id = setInterval(refresh, 5_000)
     return () => clearInterval(id)
   }, [isActive])
+
+  async function refreshFleetPreview() {
+    try {
+      const preview = await invoke('daemon_fleet_preview')
+      setFleetPreview(preview)
+      setFleetEnabled(true)
+    } catch {
+      setFleetEnabled(false)
+      setFleetPreview(null)
+    }
+  }
+
+  async function handleFleetOptOut() {
+    if (!confirm('Disable fleet reporting? This will clear all pending data.')) return
+    try {
+      await invoke('daemon_fleet_opt_out')
+      setFleetEnabled(false)
+      setFleetPreview(null)
+    } catch (e) {
+      console.error('fleet opt-out:', e)
+    }
+  }
 
   async function handlePurge() {
     if (!confirm('Purge all local data? This cannot be undone.')) return
@@ -73,7 +97,7 @@ export function InsightsView() {
       </div>
 
       <div class="insights-view__tabs" role="tablist">
-        {(['events', 'patterns', 'ai-history', 'prompts'] as InsightsTab[]).map((t) => (
+        {(['events', 'patterns', 'ai-history', 'prompts', 'team-insights'] as InsightsTab[]).map((t) => (
           <button
             key={t}
             class={`insights-view__tab${tab === t ? ' insights-view__tab--active' : ''}`}
@@ -81,7 +105,7 @@ export function InsightsView() {
             aria-selected={tab === t}
             onClick={() => setTab(t)}
           >
-            {t === 'ai-history' ? 'AI History' : t.charAt(0).toUpperCase() + t.slice(1)}
+            {t === 'ai-history' ? 'AI History' : t === 'team-insights' ? 'Team Insights' : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
       </div>
@@ -132,6 +156,50 @@ export function InsightsView() {
         {tab === 'prompts' && (
           <div style={{ color: '#6b7280', fontSize: '12px' }}>
             Prompt previews — populated after Issue #35
+          </div>
+        )}
+
+        {tab === 'team-insights' && (
+          <div>
+            <div style={{ marginBottom: '8px' }}>
+              <span style={{ fontWeight: 'bold' }}>Status: </span>
+              <span style={{
+                color: fleetEnabled ? '#22c55e' : '#ef4444',
+                fontWeight: 'bold',
+              }}>
+                {fleetEnabled ? 'Opted In' : 'Opted Out'}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+              <button onClick={refreshFleetPreview} style={{ fontSize: '12px' }}>
+                Refresh Preview
+              </button>
+              {fleetEnabled && (
+                <button onClick={handleFleetOptOut} style={{ fontSize: '12px', color: '#ef4444' }}>
+                  Opt Out
+                </button>
+              )}
+            </div>
+
+            {fleetPreview ? (
+              <pre style={{
+                background: '#1e1e1e',
+                padding: '8px',
+                borderRadius: '4px',
+                fontSize: '11px',
+                overflow: 'auto',
+                maxHeight: '300px',
+              }}>
+                {JSON.stringify(fleetPreview, null, 2)}
+              </pre>
+            ) : (
+              <div style={{ color: '#6b7280', fontSize: '12px' }}>
+                {fleetEnabled
+                  ? 'Click "Refresh Preview" to see what data will be sent.'
+                  : 'Fleet reporting is disabled.'}
+              </div>
+            )}
           </div>
         )}
       </div>

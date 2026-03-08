@@ -55,6 +55,8 @@ fn main() {
             daemon_client::daemon_ai_query,
             daemon_client::daemon_view_changed,
             daemon_client::daemon_undo,
+            daemon_client::daemon_fleet_preview,
+            daemon_client::daemon_fleet_opt_out,
             // PTY
             pty::spawn_pty,
             pty::pty_write,
