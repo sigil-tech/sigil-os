@@ -2,3 +2,4 @@ shell/node_modules/
 shell/dist/
 shell/src-tauri/target/
 *.iso
+result

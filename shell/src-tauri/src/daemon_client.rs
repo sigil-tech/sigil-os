@@ -372,7 +372,6 @@ impl DaemonClient {
 ///
 /// Used by Issue #34. The thread exits cleanly when the app handle is dropped
 /// or the daemon closes the connection.
-#[allow(dead_code)] // called from the setup hook wired in Issue #34
 pub fn subscribe_suggestions(app: AppHandle, socket_path: String) {
     thread::spawn(move || {
         let mut attempt: u32 = 0;
@@ -462,7 +461,6 @@ pub fn subscribe_suggestions(app: AppHandle, socket_path: String) {
 /// Spawns a background thread that opens a dedicated socket connection for
 /// receiving actuation push events from the daemon. Each received JSON line
 /// is emitted as a `daemon-actuation` Tauri event.
-#[allow(dead_code)]
 pub fn subscribe_actuations(app: AppHandle, socket_path: String) {
     thread::spawn(move || {
         let mut attempt: u32 = 0;
@@ -664,7 +662,7 @@ pub fn daemon_ai_query(
 /// On Linux this is retrieved from `/proc/self/status` or via `libc::getuid`.
 /// We use the `id` command via environment variable `UID` as a fallback that
 /// works without a libc dependency.
-fn get_uid() -> u32 {
+pub fn get_uid() -> u32 {
     // $UID is set by most Unix shells; fall back to parsing /proc/self/status.
     if let Ok(uid_str) = env::var("UID") {
         if let Ok(uid) = uid_str.parse::<u32>() {

@@ -40,6 +40,14 @@ fn main() {
                     let _ = window.eval(&js);
                 }
             }
+
+            // Spawn background threads that subscribe to daemon push events
+            // and re-emit them as Tauri events for the frontend.
+            let uid = daemon_client::get_uid();
+            let socket_path = format!("/run/user/{}/sigild.sock", uid);
+            daemon_client::subscribe_suggestions(app.handle().clone(), socket_path.clone());
+            daemon_client::subscribe_actuations(app.handle().clone(), socket_path);
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
