@@ -135,6 +135,11 @@ in {
         Restart = "on-failure";
         RestartSec = 5;
 
+        # Load API key from file if configured (avoids baking secrets into nix store).
+        # The file should contain: SIGIL_CLOUD_API_KEY=sk-ant-...
+        EnvironmentFile = lib.optional (cfg.inference.cloud.apiKeyFile != null)
+          cfg.inference.cloud.apiKeyFile;
+
         # Security hardening
         ProtectSystem = "strict";
         ProtectHome = "read-only";

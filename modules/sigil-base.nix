@@ -16,6 +16,7 @@
     go
     nodejs
     fontconfig
+    libnotify  # provides notify-send for sigild notifications
   ];
 
   # User

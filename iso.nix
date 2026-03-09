@@ -2,16 +2,15 @@
 { config, pkgs, lib, sigild, ... }:
 
 {
-  # Allow unfree packages (Broadcom WiFi driver)
+  # Allow unfree packages
   nixpkgs.config.allowUnfree = lib.mkForce true;
-  nixpkgs.config.permittedInsecurePackages = [
-    "broadcom-sta-6.30.223.271-59-6.12.63"
-  ];
 
-  # 2017 MacBook Pro hardware support
-  boot.kernelModules = [ "wl" ];
-  boot.extraModulePackages = [ config.boot.kernelPackages.broadcom_sta ];
-  boot.blacklistedKernelModules = [ "b43" "bcma" "brcmfmac" "brcmsmac" ];
+  # 2017 MacBook Pro hardware support (BCM4350 [14e4:43a3])
+  # Uses the open-source brcmfmac driver instead of broadcom-sta (wl),
+  # which fails with NULL ndev errors on kernel 6.12+.
+  boot.kernelModules = [ "brcmfmac" ];
+  boot.blacklistedKernelModules = [ "b43" "bcma" "wl" ];
+  hardware.enableAllFirmware = true;
   hardware.wirelessRegulatoryDatabase = true;
 
   # NetworkManager for easy WiFi setup on live boot
@@ -25,8 +24,13 @@
     watchDirs = [ "/home/engineer/workspace" ];
     repoDirs = [ "/home/engineer/workspace" ];
     inference = {
-      mode = "localfirst";
-      local.enable = true;
+      mode = "remote";
+      local.enable = false;
+      cloud = {
+        enable = true;
+        provider = "anthropic";
+        apiKeyFile = "/home/engineer/.config/sigil/cloud-api-key.env";
+      };
     };
   };
 
