@@ -117,6 +117,13 @@ in {
       endpoint = "${cfg.fleet.endpoint}"
     '';
 
+    # Pre-create data directories so the sandboxed service can write to them
+    system.activationScripts.sigildDirs = ''
+      install -d -o engineer -g users /home/engineer/.local/share/sigild
+      install -d -o engineer -g users /home/engineer/.config/sigil
+      install -d -o engineer -g users /home/engineer/.cache/sigil
+    '';
+
     # Systemd user service
     systemd.user.services.sigild = {
       description = "Sigil OS Daemon";
@@ -132,9 +139,10 @@ in {
         ProtectSystem = "strict";
         ProtectHome = "read-only";
         ReadWritePaths = [
-          "~/.local/share/sigild"
-          "~/.config/sigil"
-          "~/.cache/sigil"
+          "/home/engineer/.local/share/sigild"
+          "/home/engineer/.config/sigil"
+          "/home/engineer/.cache/sigil"
+          "%t"  # XDG_RUNTIME_DIR — needed for sigild.sock
         ];
         NoNewPrivileges = true;
         PrivateTmp = true;

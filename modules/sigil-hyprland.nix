@@ -13,12 +13,19 @@
   };
 
   # Fonts
+  fonts.fontDir.enable = true;
   fonts.packages = with pkgs; [
     ibm-plex
     dejavu_fonts
     nerd-fonts.jetbrains-mono
   ];
+  fonts.fontconfig.enable = true;
   fonts.fontconfig.defaultFonts.monospace = [ "IBM Plex Mono" "DejaVu Sans Mono" ];
+
+  # Ensure fontconfig cache directory exists for the engineer user
+  system.activationScripts.fontconfigCache = ''
+    install -d -o engineer -g users /home/engineer/.cache/fontconfig
+  '';
 
   # Essential Wayland tools
   environment.systemPackages = with pkgs; [

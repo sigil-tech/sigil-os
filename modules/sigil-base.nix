@@ -15,6 +15,7 @@
     htop
     go
     nodejs
+    fontconfig
   ];
 
   # User
