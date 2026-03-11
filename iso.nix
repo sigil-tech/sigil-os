@@ -2,6 +2,8 @@
 { config, pkgs, lib, sigild, ... }:
 
 {
+  imports = lib.optional (builtins.pathExists ./secrets.nix) ./secrets.nix;
+
   # Allow unfree packages
   nixpkgs.config.allowUnfree = lib.mkForce true;
 
@@ -29,7 +31,7 @@
       cloud = {
         enable = true;
         provider = "anthropic";
-        apiKeyFile = "/home/engineer/.config/sigil/cloud-api-key.env";
+        apiKeyFile = "/etc/sigil/cloud-api-key.env";
       };
     };
   };

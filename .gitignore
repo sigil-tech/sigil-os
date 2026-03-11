@@ -3,3 +3,4 @@ shell/dist/
 shell/src-tauri/target/
 *.iso
 result
+secrets.nix

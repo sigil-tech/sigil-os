@@ -36,6 +36,7 @@
     grim
     slurp
     foot
+    mako  # notification daemon for notify-send
   ];
 
   # XDG portal for Wayland
@@ -53,9 +54,10 @@
 
     monitor=,preferred,auto,1
 
-    # Auto-start: terminal + waybar
+    # Auto-start: terminal + waybar + notification daemon
     exec-once = foot
     exec-once = waybar -c /etc/waybar/config -s /etc/waybar/style.css
+    exec-once = mako
 
     # Global keybinds
     $mod = SUPER
