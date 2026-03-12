@@ -21,22 +21,28 @@
       subPackages = [ "cmd/sigild" "cmd/sigilctl" ];
       vendorHash = null;
     };
+
+    # Shared module list — the core Sigil OS stack
+    coreModules = [
+      ./modules/sigil-base.nix
+      ./modules/sigil-hyprland.nix
+      ./modules/sigild.nix
+      ./modules/sigil-shell.nix
+      ./modules/sigil-inference.nix
+    ];
   in {
     packages.${system} = {
       inherit sigild;
       default = sigild;
     };
 
-    # Full NixOS system configuration (for installed systems)
+    # Installed NixOS on 2017 MacBook Pro
     nixosConfigurations.sigil = nixpkgs.lib.nixosSystem {
       inherit system;
       specialArgs = { inherit sigild; };
-      modules = [
-        ./modules/sigil-base.nix
-        ./modules/sigil-hyprland.nix
-        ./modules/sigild.nix
-        ./modules/sigil-shell.nix
-        ./modules/sigil-inference.nix
+      modules = coreModules ++ [
+        ./hardware/mbp-2017.nix
+        ./services.nix
       ];
     };
 
@@ -47,12 +53,36 @@
       modules = [
         "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
         "${nixpkgs}/nixos/modules/installer/cd-dvd/channel.nix"
+      ] ++ coreModules ++ [
+        ./iso.nix
+      ];
+    };
+
+    # VM for fast local testing — no GPU, no WiFi, SSH enabled
+    nixosConfigurations.sigil-vm = nixpkgs.lib.nixosSystem {
+      inherit system;
+      specialArgs = { inherit sigild; };
+      modules = [
         ./modules/sigil-base.nix
-        ./modules/sigil-hyprland.nix
         ./modules/sigild.nix
         ./modules/sigil-shell.nix
         ./modules/sigil-inference.nix
-        ./iso.nix
+        ./hardware/vm.nix
+        {
+          # Enable sigild in the VM
+          services.sigild = {
+            enable = true;
+            logLevel = "debug";
+            watchDirs = [ "/home/engineer/workspace" ];
+            repoDirs = [ "/home/engineer/workspace" ];
+          };
+
+          # Auto-create workspace
+          system.activationScripts.workspace = ''
+            mkdir -p /home/engineer/workspace
+            chown engineer:users /home/engineer/workspace
+          '';
+        }
       ];
     };
   };

@@ -2,7 +2,9 @@
 { config, pkgs, lib, sigild, ... }:
 
 {
-  imports = lib.optional (builtins.pathExists ./secrets.nix) ./secrets.nix;
+  imports = [
+    ./services.nix
+  ];
 
   # Allow unfree packages
   nixpkgs.config.allowUnfree = lib.mkForce true;
@@ -19,25 +21,6 @@
   networking.wireless.enable = lib.mkForce false;
   networking.networkmanager.enable = true;
 
-  # Enable Sigil services on the live system
-  services.sigild = {
-    enable = true;
-    logLevel = "debug";
-    watchDirs = [ "/home/engineer/workspace" ];
-    repoDirs = [ "/home/engineer/workspace" ];
-    inference = {
-      mode = "remote";
-      local.enable = false;
-      cloud = {
-        enable = true;
-        provider = "anthropic";
-        apiKeyFile = "/etc/sigil/cloud-api-key.env";
-      };
-    };
-  };
-
-  services.sigil-inference.enable = true;
-
   # Extra tools useful on the live system
   environment.systemPackages = with pkgs; [
     wget
@@ -45,15 +28,6 @@
     networkmanagerapplet
     pavucontrol
   ];
-
-  # Auto-create workspace directory
-  system.activationScripts.workspace = ''
-    mkdir -p /home/engineer/workspace
-    chown engineer:users /home/engineer/workspace
-  '';
-
-  # Set a blank password for the engineer user on the live system
-  users.users.engineer.initialPassword = "";
 
   # Larger ISO label
   isoImage.isoName = lib.mkForce "sigil-os-live.iso";
