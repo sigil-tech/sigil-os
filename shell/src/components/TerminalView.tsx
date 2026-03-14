@@ -71,7 +71,7 @@ export function TerminalView({ onPtyReady }: Props) {
     }
   }, [])
 
-  // Resize PTY on window resize
+  // Resize PTY on window resize and container resize (split pane changes)
   useEffect(() => {
     function handleResize() {
       if (!fitRef.current || !ptyIdRef.current) return
@@ -86,7 +86,14 @@ export function TerminalView({ onPtyReady }: Props) {
     }
 
     window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
+
+    const ro = new ResizeObserver(handleResize)
+    if (containerRef.current) ro.observe(containerRef.current)
+
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      ro.disconnect()
+    }
   }, [])
 
   return (

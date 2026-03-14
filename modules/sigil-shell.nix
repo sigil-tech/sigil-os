@@ -1,4 +1,4 @@
-{ config, lib, pkgs, ... }:
+{ config, lib, pkgs, sigil-shell, ... }:
 with lib;
 let cfg = config.services.sigil-shell;
 in {
@@ -19,6 +19,10 @@ in {
   };
 
   config = mkIf cfg.enable {
+    # Install the Sigil Shell binary
+    environment.systemPackages = [ sigil-shell ];
+
+    # Generate theme CSS for injection at runtime
     environment.etc."sigil-shell/theme.css".text = ''
       :root {
         --color-bg:         ${cfg.theme.background};
@@ -32,6 +36,17 @@ in {
         --font-size:        ${cfg.theme.fontSize};
         --border-radius:    ${cfg.theme.borderRadius};
       }
+    '';
+
+    # Desktop entry for Hyprland autostart
+    environment.etc."xdg/autostart/sigil-shell.desktop".text = ''
+      [Desktop Entry]
+      Type=Application
+      Name=Sigil Shell
+      Exec=${sigil-shell}/bin/sigil-shell
+      Categories=Development;
+      StartupWMClass=sigil-shell
+      X-GNOME-Autostart-enabled=true
     '';
   };
 }

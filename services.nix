@@ -22,6 +22,7 @@
     };
   };
 
+  services.sigil-shell.enable = true;
   services.sigil-inference.enable = true;
 
   # Auto-create workspace directory

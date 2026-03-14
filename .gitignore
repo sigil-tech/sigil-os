@@ -4,3 +4,8 @@ shell/src-tauri/target/
 *.iso
 result
 secrets.nix
+*.log
+.env*
+.DS_Store
+*.swp
+*.tmp
