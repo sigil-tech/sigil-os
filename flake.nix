@@ -61,9 +61,11 @@
         librsvg
       ];
 
-      # Point Tauri to pre-built frontend assets
+      # Tauri 2.x embeds frontendDist ("../dist") at compile time.
+      # Place the pre-built frontend where the relative path resolves.
       preBuild = ''
-        export TAURI_FRONTEND_DIST="${sigil-shell-frontend}"
+        mkdir -p ../dist
+        cp -r ${sigil-shell-frontend}/* ../dist/
       '';
 
       meta = with pkgs.lib; {
