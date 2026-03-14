@@ -17,13 +17,18 @@ fn main() {
     let pty_map = PtyMap::new();
 
     // Read optional theme CSS for injection at startup.
-    // Uses XDG_CONFIG_HOME or falls back to ~/.config.
-    let theme_css = std::env::var("XDG_CONFIG_HOME")
+    // Checks /etc/sigil-shell/theme.css (NixOS module output) first,
+    // then XDG_CONFIG_HOME/sigil-shell/theme.css as fallback.
+    let theme_css = std::fs::read_to_string("/etc/sigil-shell/theme.css")
         .ok()
-        .map(std::path::PathBuf::from)
-        .or_else(|| std::env::var("HOME").ok().map(|h| std::path::PathBuf::from(h).join(".config")))
-        .map(|d| d.join("sigil-shell").join("theme.css"))
-        .and_then(|p| std::fs::read_to_string(p).ok());
+        .or_else(|| {
+            std::env::var("XDG_CONFIG_HOME")
+                .ok()
+                .map(std::path::PathBuf::from)
+                .or_else(|| std::env::var("HOME").ok().map(|h| std::path::PathBuf::from(h).join(".config")))
+                .map(|d| d.join("sigil-shell").join("theme.css"))
+                .and_then(|p| std::fs::read_to_string(p).ok())
+        });
 
     tauri::Builder::default()
         .manage(client)
@@ -65,6 +70,10 @@ fn main() {
             daemon_client::daemon_undo,
             daemon_client::daemon_fleet_preview,
             daemon_client::daemon_fleet_opt_out,
+            daemon_client::daemon_config,
+            daemon_client::daemon_sessions,
+            daemon_client::daemon_actions,
+            daemon_client::daemon_fleet_policy,
             // PTY
             pty::spawn_pty,
             pty::pty_write,

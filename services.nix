@@ -22,12 +22,15 @@
     };
   };
 
+  services.sigil-shell.enable = true;
   services.sigil-inference.enable = true;
 
-  # Auto-create workspace directory
+  # Auto-create workspace and Tauri data directories
   system.activationScripts.workspace = ''
     mkdir -p /home/engineer/workspace
-    chown engineer:users /home/engineer/workspace
+    mkdir -p /home/engineer/.local/share/dev.sigil.shell
+    chown -R engineer:users /home/engineer/workspace
+    chown -R engineer:users /home/engineer/.local/share/dev.sigil.shell
   '';
 
   # Set a blank password for the engineer user

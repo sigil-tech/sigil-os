@@ -18,14 +18,27 @@ interface Pattern {
   confidence: number
 }
 
+interface Suggestion {
+  id: number
+  category: string
+  confidence: number
+  title: string
+  body: string
+  action_cmd: string
+  status: string
+  created_at: string
+}
+
 export function InsightsView() {
   const { activeView } = useApp()
   const [tab, setTab] = useState<InsightsTab>('events')
   const [events, setEvents] = useState<ShellEvent[]>([])
   const [patterns, setPatterns] = useState<Pattern[]>([])
-  const [metrics] = useState({ total: 0, localPct: 0, acceptPct: 0 })
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([])
+  const [metrics, setMetrics] = useState({ total: 0, localPct: 0, acceptPct: 0 })
   const [fleetPreview, setFleetPreview] = useState<any>(null)
   const [fleetEnabled, setFleetEnabled] = useState(true)
+  const [connected, setConnected] = useState(true)
 
   const isActive = activeView === 'insights'
 
@@ -36,10 +49,26 @@ export function InsightsView() {
       try {
         const evs = await invoke<ShellEvent[]>('daemon_events')
         setEvents(evs)
-      } catch {}
+        setConnected(true)
+      } catch {
+        setConnected(false)
+      }
       try {
         const pats = await invoke<Pattern[]>('daemon_patterns')
         setPatterns(pats)
+      } catch {}
+      try {
+        const sugs = await invoke<Suggestion[]>('daemon_suggestions')
+        setSuggestions(sugs)
+        // Compute metrics from suggestions
+        const aiSugs = sugs.filter((s) => s.category === 'ai_discovery')
+        const accepted = sugs.filter((s) => s.status === 'accepted').length
+        const total = sugs.length
+        setMetrics({
+          total: aiSugs.length,
+          localPct: total > 0 ? Math.round((aiSugs.length / Math.max(total, 1)) * 100) : 0,
+          acceptPct: total > 0 ? Math.round((accepted / total) * 100) : 0,
+        })
       } catch {}
     }
 
@@ -148,15 +177,43 @@ export function InsightsView() {
         )}
 
         {tab === 'ai-history' && (
-          <div style={{ color: '#6b7280', fontSize: '12px' }}>
-            AI interaction history — populated after daemon connectivity (Issue #35)
-          </div>
+          <>
+            {!connected && (
+              <div style={{ color: '#ef4444', fontSize: '12px', marginBottom: '8px' }}>Daemon unavailable</div>
+            )}
+            {suggestions.filter((s) => s.category === 'ai_discovery').length === 0 && (
+              <div style={{ color: '#6b7280', fontSize: '12px' }}>No AI interactions yet</div>
+            )}
+            {suggestions.filter((s) => s.category === 'ai_discovery').map((s) => (
+              <div key={s.id} class="insights-view__item">
+                <div class="insights-view__item-header">
+                  <span>{new Date(s.created_at).toLocaleTimeString()}</span>
+                  <span style={{ color: s.status === 'accepted' ? '#22c55e' : '#9ca3af' }}>{s.status}</span>
+                </div>
+                <div><strong>{s.title}</strong></div>
+                <div style={{ color: '#9ca3af', fontSize: '11px' }}>{s.body}</div>
+              </div>
+            ))}
+          </>
         )}
 
         {tab === 'prompts' && (
-          <div style={{ color: '#6b7280', fontSize: '12px' }}>
-            Prompt previews — populated after Issue #35
-          </div>
+          <>
+            {suggestions.filter((s) => s.category === 'insight').length === 0 && (
+              <div style={{ color: '#6b7280', fontSize: '12px' }}>No prompts recorded yet</div>
+            )}
+            {suggestions.slice(0, 5).map((s) => (
+              <div key={s.id} class="insights-view__item">
+                <div class="insights-view__item-header">
+                  <span>{new Date(s.created_at).toLocaleTimeString()}</span>
+                  <span>Confidence: {Math.round(s.confidence * 100)}%</span>
+                </div>
+                <div style={{ fontSize: '11px', color: '#d1d5db' }}>
+                  {s.body.length > 500 ? s.body.slice(0, 500) + '...' : s.body}
+                </div>
+              </div>
+            ))}
+          </>
         )}
 
         {tab === 'team-insights' && (

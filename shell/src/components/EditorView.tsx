@@ -77,8 +77,16 @@ export function EditorView({ filePath }: Props) {
         rows: term.rows,
       }).catch(() => {})
     }
+
     window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
+
+    const ro = new ResizeObserver(handleResize)
+    if (containerRef.current) ro.observe(containerRef.current)
+
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      ro.disconnect()
+    }
   }, [])
 
   return (

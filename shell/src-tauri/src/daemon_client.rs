@@ -347,11 +347,30 @@ impl DaemonClient {
         Ok(())
     }
 
+    /// Returns resolved runtime configuration with API keys masked.
+    pub fn config(&mut self) -> Result<serde_json::Value, String> {
+        self.call("config", serde_json::Value::Null)
+    }
+
+    /// Returns terminal session summaries from the last 24 hours.
+    pub fn sessions(&mut self) -> Result<serde_json::Value, String> {
+        self.call("sessions", serde_json::Value::Null)
+    }
+
+    /// Returns recent undoable actions from the actuator.
+    pub fn actions(&mut self) -> Result<serde_json::Value, String> {
+        self.call("actions", serde_json::Value::Null)
+    }
+
+    /// Returns the current fleet routing policy.
+    pub fn fleet_policy(&mut self) -> Result<serde_json::Value, String> {
+        self.call("fleet-policy", serde_json::Value::Null)
+    }
+
     /// Sends a natural-language query to the daemon's AI routing layer.
     ///
     /// Returns the AI response along with the routing decision and measured
-    /// latency. Used by Issue #35.
-    #[allow(dead_code)] // wired to a Tauri command in Issue #35
+    /// latency.
     pub fn ai_query(&mut self, query: &str, context: &str) -> Result<AIQueryResponse, String> {
         let payload = serde_json::json!({
             "query": query,
@@ -641,6 +660,38 @@ pub fn daemon_fleet_opt_out(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
 ) -> Result<(), String> {
     state.lock().unwrap().fleet_opt_out()
+}
+
+/// Returns resolved runtime configuration.
+#[tauri::command]
+pub fn daemon_config(
+    state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
+) -> Result<serde_json::Value, String> {
+    state.lock().unwrap().config()
+}
+
+/// Returns terminal session summaries.
+#[tauri::command]
+pub fn daemon_sessions(
+    state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
+) -> Result<serde_json::Value, String> {
+    state.lock().unwrap().sessions()
+}
+
+/// Returns recent undoable actions.
+#[tauri::command]
+pub fn daemon_actions(
+    state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
+) -> Result<serde_json::Value, String> {
+    state.lock().unwrap().actions()
+}
+
+/// Returns the current fleet routing policy.
+#[tauri::command]
+pub fn daemon_fleet_policy(
+    state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
+) -> Result<serde_json::Value, String> {
+    state.lock().unwrap().fleet_policy()
 }
 
 /// Sends an AI query to the daemon via the inference engine.
