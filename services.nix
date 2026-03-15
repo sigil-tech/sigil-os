@@ -27,10 +27,13 @@
 
   # Auto-create workspace and Tauri data directories
   system.activationScripts.workspace = ''
-    mkdir -p /home/engineer/workspace
-    mkdir -p /home/engineer/.local/share/dev.sigil.shell
-    chown -R engineer:users /home/engineer/workspace
-    chown -R engineer:users /home/engineer/.local/share/dev.sigil.shell
+    for u in /home/*; do
+      user=$(basename "$u")
+      mkdir -p "$u/workspace"
+      mkdir -p "$u/.local/share/dev.sigil.shell"
+      chown -R "$user:users" "$u/workspace"
+      chown -R "$user:users" "$u/.local/share/dev.sigil.shell"
+    done
   '';
 
   # Set a blank password for the engineer user

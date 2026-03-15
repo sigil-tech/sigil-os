@@ -4,10 +4,13 @@ import { invoke } from '@tauri-apps/api/core'
 
 interface Suggestion {
   id: number
-  text: string
-  title: string
+  category: string
   confidence: number
-  action_cmd: string
+  title: string
+  body: string
+  action_cmd: string | null
+  status: string
+  created_at: string
 }
 
 export function SuggestionBar() {
@@ -59,7 +62,6 @@ export function SuggestionBar() {
           suggestionId: current.id,
           outcome: 'accepted',
         }).catch(() => {})
-        // If an action command is set, emit it for the active PTY to execute
         if (current.action_cmd) {
           await emit('execute-action', { cmd: current.action_cmd }).catch(() => {})
         }
@@ -94,7 +96,7 @@ export function SuggestionBar() {
     <div class="suggestion-bar" role="status" aria-live="polite">
       <span class="suggestion-bar__text">
         {current.title ? <strong>{current.title}: </strong> : null}
-        {current.text}
+        {current.body}
       </span>
       <span class="suggestion-bar__hints">
         <kbd>Tab</kbd> accept{current.action_cmd ? ' • Tab to execute' : ''}

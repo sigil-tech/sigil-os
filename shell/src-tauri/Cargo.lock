@@ -3307,6 +3307,7 @@ name = "sigil-shell"
 version = "0.1.0"
 dependencies = [
  "git2",
+ "libc",
  "portable-pty",
  "reqwest 0.12.28",
  "serde",

@@ -119,9 +119,12 @@ in {
 
     # Pre-create data directories so the sandboxed service can write to them
     system.activationScripts.sigildDirs = ''
-      install -d -o engineer -g users /home/engineer/.local/share/sigild
-      install -d -o engineer -g users /home/engineer/.config/sigil
-      install -d -o engineer -g users /home/engineer/.cache/sigil
+      for u in /home/*; do
+        user=$(basename "$u")
+        install -d -o "$user" -g users "$u/.local/share/sigild"
+        install -d -o "$user" -g users "$u/.config/sigil"
+        install -d -o "$user" -g users "$u/.cache/sigil"
+      done
     '';
 
     # Systemd user service
@@ -144,9 +147,9 @@ in {
         ProtectSystem = "strict";
         ProtectHome = "read-only";
         ReadWritePaths = [
-          "/home/engineer/.local/share/sigild"
-          "/home/engineer/.config/sigil"
-          "/home/engineer/.cache/sigil"
+          "%h/.local/share/sigild"
+          "%h/.config/sigil"
+          "%h/.cache/sigil"
           "%t"  # XDG_RUNTIME_DIR — needed for sigild.sock
         ];
         NoNewPrivileges = true;

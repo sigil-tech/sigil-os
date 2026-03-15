@@ -5,7 +5,6 @@
 // up to 10 attempts. The struct is intended to be held behind Arc<Mutex<_>>
 // as Tauri managed state.
 
-use std::env;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
@@ -27,12 +26,17 @@ struct Request<'a> {
 }
 
 /// A response frame received from the daemon.
+///
+/// The daemon returns `{"ok":true,"payload":{...}}` on success
+/// or `{"ok":false,"error":"..."}` on failure.
 #[derive(Debug, Deserialize)]
 struct Response {
     #[serde(default)]
-    error: Option<String>,
+    ok: bool,
     #[serde(default)]
-    result: serde_json::Value,
+    payload: serde_json::Value,
+    #[serde(default)]
+    error: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -40,65 +44,83 @@ struct Response {
 // ---------------------------------------------------------------------------
 
 /// Daemon process status information.
+/// Matches Go: {"status":"ok","version":"...","rss_mb":18,"notifier_level":2,"current_keybinding_profile":"terminal"}
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StatusResponse {
-    pub running: bool,
-    pub pid: Option<u32>,
-    pub uptime_secs: Option<u64>,
+    pub status: String,
+    #[serde(default)]
     pub version: Option<String>,
+    #[serde(default)]
+    pub rss_mb: Option<u64>,
+    #[serde(default)]
+    pub notifier_level: Option<u32>,
+    #[serde(default)]
+    pub current_keybinding_profile: Option<String>,
 }
 
-/// A single shell event from daemon history.
+/// A single event from daemon history.
+/// Matches Go event.Event: {"id":42,"kind":"file","source":"files","payload":{...},"timestamp":"2026-..."}
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ShellEvent {
-    pub id: String,
-    pub timestamp: u64,
-    pub command: String,
-    pub exit_code: i32,
-    pub directory: String,
+    pub id: i64,
+    pub kind: String,
+    pub source: String,
+    #[serde(default)]
+    pub payload: serde_json::Value,
+    pub timestamp: String,
 }
 
-/// A command suggestion returned by the daemon.
+/// A suggestion returned by the daemon.
+/// Matches Go store.Suggestion: {"id":1,"category":"pattern","confidence":0.75,"title":"...","body":"...","action_cmd":"...","status":"pending","created_at":"..."}
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Suggestion {
-    pub command: String,
-    pub score: f64,
-    pub source: String,
+    pub id: i64,
+    pub category: String,
+    pub confidence: f64,
+    pub title: String,
+    pub body: String,
+    #[serde(default)]
+    pub action_cmd: Option<String>,
+    pub status: String,
+    pub created_at: String,
 }
 
-/// A file entry returned by the daemon.
+/// A file edit count returned by the daemon.
+/// Matches Go store.FileEditCount: {"Path":"...","Count":3}
+/// Note: Go struct has no json tags so fields are uppercase.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FileEntry {
+    #[serde(alias = "Path")]
     pub path: String,
-    pub kind: String,
-    pub size: Option<u64>,
+    #[serde(alias = "Count")]
+    pub count: u64,
 }
 
-/// A known command record.
+/// A command frequency record.
+/// Matches Go commands handler: {"cmd":"...","count":3,"last_exit_code":0}
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CommandRecord {
-    pub command: String,
-    pub frequency: u64,
-    pub last_used: u64,
+    pub cmd: String,
+    pub count: u64,
+    pub last_exit_code: i32,
 }
 
 /// A behaviour pattern detected by the daemon.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Pattern {
-    pub id: String,
-    pub description: String,
-    pub confidence: f64,
-}
+/// Patterns are just Suggestions filtered to category=="pattern".
+pub type Pattern = Suggestion;
 
-/// Response from the `trigger_summary` method.
+/// Response from the `trigger-summary` method.
+/// Matches Go: {"ok":true,"message":"analysis cycle queued"}
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SummaryResponse {
-    pub summary: String,
-    pub generated_at: u64,
+    #[serde(default)]
+    pub ok: Option<bool>,
+    #[serde(default)]
+    pub message: Option<String>,
 }
 
-/// AI query response (used by Issue #35).
-#[allow(dead_code)] // constructed by the daemon response path wired in Issue #35
+/// AI query response.
+/// Matches Go ai-query handler: {"response":"...","routing":"local|cloud","latency_ms":42}
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AIQueryResponse {
     pub response: String,
@@ -258,11 +280,12 @@ impl DaemonClient {
         let resp: Response =
             serde_json::from_str(line.trim()).map_err(|e| format!("parse response: {}", e))?;
 
-        if let Some(err_msg) = resp.error {
-            return Err(format!("daemon error: {}", err_msg));
+        if !resp.ok {
+            let msg = resp.error.unwrap_or_else(|| "unknown error".into());
+            return Err(format!("daemon error: {}", msg));
         }
 
-        Ok(resp.result)
+        Ok(resp.payload)
     }
 
     // -----------------------------------------------------------------------
@@ -305,22 +328,28 @@ impl DaemonClient {
         serde_json::from_value(val).map_err(|e| format!("parse patterns: {}", e))
     }
 
-    /// Asks the daemon to generate and return a session summary.
+    /// Asks the daemon to trigger an analysis cycle.
     pub fn trigger_summary(&mut self) -> Result<SummaryResponse, String> {
-        let val = self.call("trigger_summary", serde_json::Value::Null)?;
+        let val = self.call("trigger-summary", serde_json::Value::Null)?;
         serde_json::from_value(val).map_err(|e| format!("parse summary: {}", e))
     }
 
-    /// Sends user feedback to the daemon.
+    /// Sends suggestion feedback to the daemon.
     ///
-    /// `kind` is a short tag such as `"positive"` or `"negative"`.
-    /// `detail` carries an optional free-form message.
-    pub fn feedback(&mut self, kind: &str, detail: Option<&str>) -> Result<(), String> {
+    /// `suggestion_id` identifies the suggestion.
+    /// `outcome` is `"accepted"` or `"dismissed"`.
+    pub fn feedback(&mut self, suggestion_id: i64, outcome: &str) -> Result<(), String> {
         let payload = serde_json::json!({
-            "kind": kind,
-            "detail": detail,
+            "suggestion_id": suggestion_id,
+            "outcome": outcome,
         });
         self.call("feedback", payload)?;
+        Ok(())
+    }
+
+    /// Purges all local data from the daemon store.
+    pub fn purge(&mut self) -> Result<(), String> {
+        self.call("purge", serde_json::Value::Null)?;
         Ok(())
     }
 
@@ -376,7 +405,7 @@ impl DaemonClient {
             "query": query,
             "context": context,
         });
-        let val = self.call("ai_query", payload)?;
+        let val = self.call("ai-query", payload)?;
         serde_json::from_value(val).map_err(|e| format!("parse ai_query response: {}", e))
     }
 }
@@ -417,8 +446,8 @@ pub fn subscribe_suggestions(app: AppHandle, socket_path: String) {
 
             // Send the subscribe request frame.
             let req = Request {
-                method: "subscribe_suggestions",
-                payload: serde_json::Value::Null,
+                method: "subscribe",
+                payload: serde_json::json!({"topic": "suggestions"}),
             };
             let mut frame = match serde_json::to_string(&req) {
                 Ok(s) => s,
@@ -505,8 +534,8 @@ pub fn subscribe_actuations(app: AppHandle, socket_path: String) {
             };
 
             let req = Request {
-                method: "subscribe_actuations",
-                payload: serde_json::Value::Null,
+                method: "subscribe",
+                payload: serde_json::json!({"topic": "actuations"}),
             };
             let mut frame = match serde_json::to_string(&req) {
                 Ok(s) => s,
@@ -615,17 +644,25 @@ pub fn daemon_trigger_summary(
     state.lock().unwrap().trigger_summary()
 }
 
-/// Sends user feedback to the daemon.
+/// Sends suggestion feedback to the daemon.
 #[tauri::command]
 pub fn daemon_feedback(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
-    kind: String,
-    detail: Option<String>,
+    suggestion_id: i64,
+    outcome: String,
 ) -> Result<(), String> {
     state
         .lock()
         .unwrap()
-        .feedback(&kind, detail.as_deref())
+        .feedback(suggestion_id, &outcome)
+}
+
+/// Purges all local daemon data.
+#[tauri::command]
+pub fn daemon_purge(
+    state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
+) -> Result<(), String> {
+    state.lock().unwrap().purge()
 }
 
 /// Requests the daemon to undo the most recent undoable action.
@@ -708,34 +745,8 @@ pub fn daemon_ai_query(
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Returns the current process UID.
-///
-/// On Linux this is retrieved from `/proc/self/status` or via `libc::getuid`.
-/// We use the `id` command via environment variable `UID` as a fallback that
-/// works without a libc dependency.
+/// Returns the current process UID via the underlying syscall.
 pub fn get_uid() -> u32 {
-    // $UID is set by most Unix shells; fall back to parsing /proc/self/status.
-    if let Ok(uid_str) = env::var("UID") {
-        if let Ok(uid) = uid_str.parse::<u32>() {
-            return uid;
-        }
-    }
-
-    // Read from /proc/self/status — works on Linux without any extra dep.
-    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
-        for line in status.lines() {
-            if line.starts_with("Uid:") {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if let Some(uid_str) = parts.get(1) {
-                    if let Ok(uid) = uid_str.parse::<u32>() {
-                        return uid;
-                    }
-                }
-            }
-        }
-    }
-
-    // Last resort: effective UID 1000 is the common default for the first
-    // non-root user on most Linux distributions.
-    1000
+    // SAFETY: getuid() is always safe — no arguments, no failure mode.
+    unsafe { libc::getuid() }
 }

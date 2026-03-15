@@ -36,7 +36,7 @@
   # Enable SSH so you can connect from the host
   services.openssh = {
     enable = true;
-    settings.PermitRootLogin = "yes";
+    settings.PermitRootLogin = lib.mkForce "yes";
     settings.PermitEmptyPasswords = "yes";
   };
   users.users.root.initialPassword = "";

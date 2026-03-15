@@ -22,9 +22,12 @@
   fonts.fontconfig.enable = true;
   fonts.fontconfig.defaultFonts.monospace = [ "IBM Plex Mono" "DejaVu Sans Mono" ];
 
-  # Ensure fontconfig cache directory exists for the engineer user
+  # Ensure fontconfig cache directory exists for all users
   system.activationScripts.fontconfigCache = ''
-    install -d -o engineer -g users /home/nick/.cache/fontconfig
+    for u in /home/*; do
+      user=$(basename "$u")
+      install -d -o "$user" -g users "$u/.cache/fontconfig"
+    done
   '';
 
   # Essential Wayland tools

@@ -65,6 +65,7 @@ fn main() {
             daemon_client::daemon_patterns,
             daemon_client::daemon_trigger_summary,
             daemon_client::daemon_feedback,
+            daemon_client::daemon_purge,
             daemon_client::daemon_ai_query,
             daemon_client::daemon_view_changed,
             daemon_client::daemon_undo,

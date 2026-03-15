@@ -5,17 +5,22 @@ import { useApp } from '../context/AppContext'
 type InsightsTab = 'events' | 'patterns' | 'ai-history' | 'prompts' | 'team-insights'
 
 interface ShellEvent {
-  id: string
-  timestamp: number
-  command: string
-  exit_code: number
-  directory: string
+  id: number
+  kind: string
+  source: string
+  payload: Record<string, any>
+  timestamp: string
 }
 
 interface Pattern {
-  id: string
-  description: string
+  id: number
+  category: string
   confidence: number
+  title: string
+  body: string
+  action_cmd: string | null
+  status: string
+  created_at: string
 }
 
 interface Suggestion {
@@ -102,7 +107,7 @@ export function InsightsView() {
   async function handlePurge() {
     if (!confirm('Purge all local data? This cannot be undone.')) return
     try {
-      await invoke('daemon_feedback', { kind: 'purge', detail: null })
+      await invoke('daemon_purge')
     } catch (e) {
       console.error('purge:', e)
     }
@@ -148,13 +153,13 @@ export function InsightsView() {
             {events.map((e) => (
               <div key={e.id} class="insights-view__item">
                 <div class="insights-view__item-header">
-                  <span>{new Date(e.timestamp * 1000).toLocaleTimeString()}</span>
-                  <span style={{ color: e.exit_code === 0 ? '#22c55e' : '#ef4444' }}>
-                    exit {e.exit_code}
-                  </span>
-                  <span>{e.directory}</span>
+                  <span>{new Date(e.timestamp).toLocaleTimeString()}</span>
+                  <span style={{ color: '#9ca3af' }}>{e.kind}</span>
+                  <span>{e.source}</span>
                 </div>
-                <div>{e.command}</div>
+                <div style={{ fontSize: '11px', color: '#d1d5db' }}>
+                  {e.payload?.cmd ?? JSON.stringify(e.payload).slice(0, 120)}
+                </div>
               </div>
             ))}
           </>
@@ -170,7 +175,8 @@ export function InsightsView() {
                 <div class="insights-view__item-header">
                   <span>Confidence: {Math.round(p.confidence * 100)}%</span>
                 </div>
-                <div>{p.description}</div>
+                <div><strong>{p.title}</strong></div>
+                <div style={{ color: '#9ca3af', fontSize: '11px' }}>{p.body}</div>
               </div>
             ))}
           </>
