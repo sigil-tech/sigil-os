@@ -29,7 +29,7 @@
 
   # Filesystems (from nixos-generate-config)
   fileSystems."/" = {
-    device = "/dev/disk/by-uuid/811ed4f6-8563-47b4-82d9-f22871a3c721";
+    device = "/dev/disk/by-uuid/516a7a50-8270-48dc-9c0b-eeb61effccaf";
     fsType = "ext4";
   };
   fileSystems."/boot" = {

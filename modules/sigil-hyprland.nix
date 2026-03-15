@@ -8,7 +8,7 @@
     enable = true;
     settings.default_session = {
       command = "${pkgs.hyprland}/bin/Hyprland";
-      user = "engineer";
+      user = "nick";
     };
   };
 
@@ -24,7 +24,7 @@
 
   # Ensure fontconfig cache directory exists for the engineer user
   system.activationScripts.fontconfigCache = ''
-    install -d -o engineer -g users /home/engineer/.cache/fontconfig
+    install -d -o engineer -g users /home/nick/.cache/fontconfig
   '';
 
   # Essential Wayland tools
@@ -48,8 +48,8 @@
   # Write Hyprland config to engineer's home directory
   # Hyprland reads from ~/.config/hypr/hyprland.conf
   system.activationScripts.hyprlandConfig = ''
-    mkdir -p /home/engineer/.config/hypr
-    cat > /home/engineer/.config/hypr/hyprland.conf << 'HYPRCONF'
+    mkdir -p /home/nick/.config/hypr
+    cat > /home/nick/.config/hypr/hyprland.conf << 'HYPRCONF'
     # Sigil OS Hyprland Configuration
 
     monitor=,preferred,auto,1
@@ -105,10 +105,10 @@
       follow_mouse = 1
     }
 HYPRCONF
-    chown -R engineer:users /home/engineer/.config/hypr
+    chown -R nick:users /home/nick/.config/hypr
 
-    mkdir -p /home/engineer/.config/foot
-    cat > /home/engineer/.config/foot/foot.ini << 'FOOTCONF'
+    mkdir -p /home/nick/.config/foot
+    cat > /home/nick/.config/foot/foot.ini << 'FOOTCONF'
 [main]
 font=IBM Plex Mono:size=13
 font-bold=IBM Plex Mono:weight=bold:size=13
@@ -117,7 +117,7 @@ font-bold=IBM Plex Mono:weight=bold:size=13
 background=0a0a0a
 foreground=e5e5e5
 FOOTCONF
-    chown -R engineer:users /home/engineer/.config/foot
+    chown -R nick:users /home/nick/.config/foot
   '';
 
   # Waybar configuration for daemon status

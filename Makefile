@@ -1,7 +1,7 @@
 SHELL := bash
 NIX := nix --extra-experimental-features 'nix-command flakes'
 
-.PHONY: check eval build-system build-iso build-vm run-vm deploy help
+.PHONY: check eval build-system build-iso build-vm run-vm deploy deploy-test push help
 
 WIN_ISO_PATH := /mnt/c/Users/nick/Downloads/sigil-os.iso
 VM_DISK := /tmp/sigil-vm.qcow2
@@ -9,7 +9,8 @@ VM_MEMORY := 4096
 VM_CPUS := 2
 
 # SSH target for the installed MBP (set via env or override)
-MBP_HOST ?= engineer@sigil.local
+MBP_HOST ?= nick@192.168.1.173
+SIGIL_SRC ?= $(HOME)/workspace/sigil
 
 # ─── Fast feedback (seconds) ───────────────────────────────────────
 
@@ -78,6 +79,23 @@ deploy-test: ## Deploy to MBP without switching (test only, rollback on reboot)
 		--target-host $(MBP_HOST) \
 		--use-remote-sudo
 	@echo "Test deploy active (reverts on reboot)."
+
+push: ## Sync + rebuild on MBP over SSH (edit locally, deploy remotely)
+	@echo "==> Syncing sigil source to $(MBP_HOST):/tmp/sigil..."
+	rsync -azq --exclude=result $(SIGIL_SRC)/ $(MBP_HOST):/tmp/sigil/
+	@echo "==> Syncing sigil-os config to $(MBP_HOST):/tmp/sigil-os..."
+	rsync -azq --exclude=result ./ $(MBP_HOST):/tmp/sigil-os/
+	@echo "==> Building on MBP..."
+	ssh -t $(MBP_HOST) '\
+		cd /tmp/sigil && rm -rf vendor && go mod vendor && \
+		sed -i "/vendor/d" .gitignore && \
+		git add -A && git diff-index --quiet HEAD || git commit -m "local build" && \
+		cd /tmp/sigil-os && \
+		sed -i "s|git+file:///home/nick/workspace/sigil|git+file:///tmp/sigil|" flake.nix && \
+		git add -A && git diff-index --quiet HEAD || git commit -m "local deploy" && \
+		rm -f flake.lock && \
+		sudo nixos-rebuild switch --flake /tmp/sigil-os\#sigil'
+	@echo "==> Deploy complete."
 
 # ─── Help ─────────────────────────────────────────────────────────
 
