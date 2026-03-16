@@ -264,7 +264,7 @@ body {
 
 .ai-overlay__body code {
   font-family: 'Fira Code', Consolas, 'Courier New', monospace;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 /* ── Suggestion Bar ────────────────────────────────────────── */
@@ -398,7 +398,7 @@ body {
   border-radius: 4px;
   color: var(--color-fg);
   font-family: 'Fira Code', Consolas, 'Courier New', monospace;
-  font-size: 13px;
+  font-size: 14px;
   padding: 4px 8px;
   outline: none;
 }
@@ -677,7 +677,7 @@ body {
   justify-content: space-between;
   padding: 8px 16px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .palette__item:hover,
@@ -704,7 +704,7 @@ body {
   padding: 16px;
   text-align: center;
   color: var(--color-fg-muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 /* ── Insights View ────────────────────────────────────────── */
