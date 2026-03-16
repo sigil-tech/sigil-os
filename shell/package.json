@@ -10,7 +10,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@fontsource/ibm-plex-mono": "^5.1.1",
+    "@fontsource/fira-code": "^5.1.1",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
     "marked": "^12.0.0",

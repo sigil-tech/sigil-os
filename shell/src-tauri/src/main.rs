@@ -1,6 +1,7 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod browser;
 mod containers;
 mod daemon_client;
 mod editor;
@@ -8,6 +9,7 @@ mod git;
 mod hyprland;
 mod pty;
 
+use browser::BrowserState;
 use daemon_client::DaemonClient;
 use pty::PtyMap;
 use tauri::Manager;
@@ -33,6 +35,7 @@ fn main() {
     tauri::Builder::default()
         .manage(client)
         .manage(pty_map)
+        .manage(BrowserState::new())
         .setup(move |app| {
             if let Some(css) = theme_css {
                 let windows: std::collections::HashMap<String, tauri::WebviewWindow> = app.webview_windows();
@@ -94,6 +97,15 @@ fn main() {
             containers::container_stop,
             containers::container_restart,
             containers::container_logs,
+            // Browser
+            browser::browser_create,
+            browser::browser_navigate,
+            browser::browser_back,
+            browser::browser_forward,
+            browser::browser_reload,
+            browser::browser_show,
+            browser::browser_hide,
+            browser::browser_get_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

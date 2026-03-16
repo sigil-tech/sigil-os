@@ -23,7 +23,7 @@ export function TerminalView({ onPtyReady }: Props) {
       cursorStyle: 'block',
       allowTransparency: false,
       fontSize: 14,
-      fontFamily: '"IBM Plex Mono", monospace',
+      fontFamily: '"Fira Code", Consolas, "Courier New", monospace',
       theme: {
         background: '#0a0a0a',
         foreground: '#e5e5e5',

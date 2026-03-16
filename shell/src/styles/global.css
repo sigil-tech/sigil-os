@@ -1,5 +1,5 @@
-@import '@fontsource/ibm-plex-mono/400.css';
-@import '@fontsource/ibm-plex-mono/700.css';
+@import '@fontsource/fira-code/400.css';
+@import '@fontsource/fira-code/700.css';
 
 :root {
   --color-bg:          #0a0a0a;
@@ -9,8 +9,8 @@
   --color-bg-surface:  #111111;
   --color-bg-hover:    #1a1a1a;
   --color-fg-muted:    #888888;
-  --font-family:       'IBM Plex Mono', monospace;
-  --font-size:         13px;
+  --font-family:       'Fira Code', Consolas, 'Courier New', monospace;
+  --font-size:         14px;
   --border-radius:     4px;
 }
 
@@ -184,7 +184,7 @@ body {
   cursor: pointer;
   font-size: 10px;
   padding: 2px 6px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Fira Code', Consolas, 'Courier New', monospace;
 }
 
 .suggestion-bar__history:hover {
@@ -263,7 +263,7 @@ body {
 }
 
 .ai-overlay__body code {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Fira Code', Consolas, 'Courier New', monospace;
   font-size: 13px;
 }
 
@@ -301,7 +301,7 @@ body {
   border-radius: 3px;
   padding: 1px 4px;
   font-size: 10px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Fira Code', Consolas, 'Courier New', monospace;
 }
 
 /* ── Input Bar ─────────────────────────────────────────────── */
@@ -347,7 +347,7 @@ body {
   border: none;
   outline: none;
   color: var(--color-fg);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Fira Code', Consolas, 'Courier New', monospace;
   font-size: 14px;
   caret-color: var(--color-accent);
 }
@@ -397,7 +397,7 @@ body {
   border: 1px solid #333;
   border-radius: 4px;
   color: var(--color-fg);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Fira Code', Consolas, 'Courier New', monospace;
   font-size: 13px;
   padding: 4px 8px;
   outline: none;
@@ -598,7 +598,7 @@ body {
   cursor: pointer;
   font-size: 10px;
   padding: 2px 6px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Fira Code', Consolas, 'Courier New', monospace;
 }
 
 .container-view__action-btn:hover {
@@ -657,7 +657,7 @@ body {
   border-bottom: 1px solid var(--color-border);
   outline: none;
   color: var(--color-fg);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Fira Code', Consolas, 'Courier New', monospace;
   font-size: 14px;
   caret-color: var(--color-accent);
 }
@@ -793,7 +793,7 @@ body {
   border-radius: 4px;
   color: #fca5a5;
   cursor: pointer;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Fira Code', Consolas, 'Courier New', monospace;
   font-size: 12px;
 }
 

@@ -12,8 +12,8 @@ in {
       surface       = mkOption { type = types.str; default = "#111111"; description = "Surface background color"; };
       hover         = mkOption { type = types.str; default = "#1a1a1a"; description = "Hover background color"; };
       muted         = mkOption { type = types.str; default = "#888888"; description = "Muted foreground color"; };
-      fontFamily    = mkOption { type = types.str; default = "'IBM Plex Mono', monospace"; description = "Font family"; };
-      fontSize      = mkOption { type = types.str; default = "13px"; description = "Font size"; };
+      fontFamily    = mkOption { type = types.str; default = "'Fira Code', Consolas, 'Courier New', monospace"; description = "Font family"; };
+      fontSize      = mkOption { type = types.str; default = "14px"; description = "Font size"; };
       borderRadius  = mkOption { type = types.str; default = "4px"; description = "Border radius"; };
     };
   };

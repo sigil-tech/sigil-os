@@ -2,33 +2,22 @@
 { config, pkgs, lib, ... }:
 
 {
-  # Boot loader
-  boot.loader.systemd-boot.enable = true;
-  boot.loader.efi.canTouchEfiVariables = true;
-
-  # Virtio drivers for QEMU
-  boot.initrd.availableKernelModules = [
-    "virtio_pci" "virtio_blk" "virtio_scsi" "virtio_net"
-    "ahci" "xhci_pci" "sr_mod"
-  ];
-
-  # Root filesystem — uses a virtual disk
-  fileSystems."/" = {
-    device = "/dev/vda1";
-    fsType = "ext4";
+  # Use NixOS virtualisation module for proper QEMU VM support
+  virtualisation = {
+    memorySize = 4096;
+    cores = 2;
+    graphics = false;
+    forwardPorts = [
+      { from = "host"; host.port = 2222; guest.port = 22; }
+    ];
+    # Disk size for the VM root
+    diskSize = 20480; # 20GB
   };
-
-  # No swap in VM
-  swapDevices = [];
 
   # Networking — QEMU user-mode networking
   networking.wireless.enable = lib.mkForce false;
   networking.networkmanager.enable = lib.mkForce false;
   networking.useDHCP = true;
-
-  # Sound — not needed in VM
-  # Graphics — virtio-gpu
-  hardware.graphics.enable = true;
 
   # Auto-login for quick testing
   users.users.engineer.initialPassword = "";

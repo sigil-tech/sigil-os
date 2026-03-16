@@ -27,7 +27,7 @@
       pname = "sigil-shell-frontend";
       version = "0.1.0";
       src = ./shell;
-      npmDepsHash = "sha256-LSq2n4VWhX0P/e4ATIpM09PXtpw53klMuyBOdsWTYuM=";
+      npmDepsHash = "sha256-85F5caMK2eGTnQty7wf+L0sy8tAJ4Ol0Kbvyka4mFhA=";
       buildPhase = ''
         npm run build
       '';
@@ -54,6 +54,7 @@
         libsoup_3
         openssl
         glib
+        glib-networking
         cairo
         pango
         gdk-pixbuf
@@ -116,6 +117,7 @@
       inherit system;
       specialArgs = { inherit sigild sigil-shell; };
       modules = [
+        "${nixpkgs}/nixos/modules/virtualisation/qemu-vm.nix"
         ./modules/sigil-base.nix
         ./modules/sigild.nix
         ./modules/sigil-shell.nix
@@ -126,16 +128,18 @@
           services.sigild = {
             enable = true;
             logLevel = "debug";
-            watchDirs = [ "/home/engineer/workspace" ];
-            repoDirs = [ "/home/engineer/workspace" ];
+            watchDirs = [ "~/workspace" ];
+            repoDirs = [ "~/workspace" ];
           };
 
           services.sigil-shell.enable = true;
 
           # Auto-create workspace
           system.activationScripts.workspace = ''
-            mkdir -p /home/engineer/workspace
-            chown engineer:users /home/engineer/workspace
+            for u in /home/*; do
+              user=$(basename "$u")
+              mkdir -p "$u/workspace"
+              chown "$user:users" "$u/workspace"
           '';
         }
       ];

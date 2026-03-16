@@ -3307,6 +3307,7 @@ name = "sigil-shell"
 version = "0.1.0"
 dependencies = [
  "git2",
+ "gtk",
  "libc",
  "portable-pty",
  "reqwest 0.12.28",
@@ -3315,7 +3316,9 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tokio",
+ "url",
  "uuid",
+ "webkit2gtk",
 ]
 
 [[package]]
