@@ -3,6 +3,7 @@
 
 mod browser;
 mod containers;
+mod cwd;
 mod daemon_client;
 mod editor;
 mod git;
@@ -78,6 +79,8 @@ fn main() {
             daemon_client::daemon_sessions,
             daemon_client::daemon_actions,
             daemon_client::daemon_fleet_policy,
+            // CWD
+            cwd::get_cwd,
             // PTY
             pty::spawn_pty,
             pty::pty_write,

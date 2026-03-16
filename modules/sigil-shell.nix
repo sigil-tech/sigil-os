@@ -19,8 +19,8 @@ in {
   };
 
   config = mkIf cfg.enable {
-    # Install the Sigil Shell binary
-    environment.systemPackages = [ sigil-shell ];
+    # Install the Sigil Shell binary and editor dependency
+    environment.systemPackages = [ sigil-shell pkgs.neovim ];
 
     # Generate theme CSS for injection at runtime
     environment.etc."sigil-shell/theme.css".text = ''
