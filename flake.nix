@@ -140,6 +140,7 @@
               user=$(basename "$u")
               mkdir -p "$u/workspace"
               chown "$user:users" "$u/workspace"
+            done
           '';
         }
       ];
