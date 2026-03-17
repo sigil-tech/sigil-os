@@ -20,6 +20,11 @@
         apiKeyFile = "/etc/sigil/cloud-api-key.env";
       };
     };
+    network = {
+      enable = true;
+      bind = "0.0.0.0";
+      port = 7773;
+    };
   };
 
   services.sigil-shell.enable = true;

@@ -124,6 +124,10 @@ body {
   background-color: #ef4444;
 }
 
+.left-rail__dot--remote {
+  background-color: #3b82f6;
+}
+
 .left-rail__label {
   white-space: nowrap;
   overflow: hidden;

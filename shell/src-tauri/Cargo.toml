@@ -20,6 +20,9 @@ hyper = { version = "1", features = ["http1", "client"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
 bytes = "1"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rustls-pemfile = "2"
+sha2 = "0.10"
 libc = "0.2"
 gtk = "0.18"
 webkit2gtk = "2.0"

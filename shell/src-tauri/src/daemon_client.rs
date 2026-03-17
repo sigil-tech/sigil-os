@@ -1,17 +1,23 @@
-// daemon_client.rs — Unix socket client for the sigild daemon.
+// daemon_client.rs — Multi-transport client for the sigild daemon.
 //
-// Sends newline-delimited JSON requests and reads newline-delimited JSON
-// responses. Reconnects automatically on socket drop with a 2-second backoff,
-// up to 10 attempts. The struct is intended to be held behind Arc<Mutex<_>>
-// as Tauri managed state.
+// Supports Unix socket (local) and TCP+TLS (remote) transports.
+// For TCP, a custom ServerCertVerifier performs SPKI fingerprint pinning
+// instead of CA chain validation, matching the credential file format.
+//
+// The struct is intended to be held behind Arc<Mutex<_>> as Tauri managed state.
 
 use std::io::{BufRead, BufReader, Write};
+use std::net::TcpStream;
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
+use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use rustls::{ClientConfig, ClientConnection, DigitallySignedStruct, Error as TlsError, StreamOwned};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter};
 
 // ---------------------------------------------------------------------------
@@ -26,9 +32,6 @@ struct Request<'a> {
 }
 
 /// A response frame received from the daemon.
-///
-/// The daemon returns `{"ok":true,"payload":{...}}` on success
-/// or `{"ok":false,"error":"..."}` on failure.
 #[derive(Debug, Deserialize)]
 struct Response {
     #[serde(default)]
@@ -43,8 +46,6 @@ struct Response {
 // Public response types exposed to Tauri commands
 // ---------------------------------------------------------------------------
 
-/// Daemon process status information.
-/// Matches Go: {"status":"ok","version":"...","rss_mb":18,"notifier_level":2,"current_keybinding_profile":"terminal"}
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StatusResponse {
     pub status: String,
@@ -58,8 +59,6 @@ pub struct StatusResponse {
     pub current_keybinding_profile: Option<String>,
 }
 
-/// A single event from daemon history.
-/// Matches Go event.Event: {"id":42,"kind":"file","source":"files","payload":{...},"timestamp":"2026-..."}
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ShellEvent {
     pub id: i64,
@@ -70,8 +69,6 @@ pub struct ShellEvent {
     pub timestamp: String,
 }
 
-/// A suggestion returned by the daemon.
-/// Matches Go store.Suggestion: {"id":1,"category":"pattern","confidence":0.75,"title":"...","body":"...","action_cmd":"...","status":"pending","created_at":"..."}
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Suggestion {
     pub id: i64,
@@ -85,9 +82,6 @@ pub struct Suggestion {
     pub created_at: String,
 }
 
-/// A file edit count returned by the daemon.
-/// Matches Go store.FileEditCount: {"Path":"...","Count":3}
-/// Note: Go struct has no json tags so fields are uppercase.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FileEntry {
     #[serde(alias = "Path")]
@@ -96,8 +90,6 @@ pub struct FileEntry {
     pub count: u64,
 }
 
-/// A command frequency record.
-/// Matches Go commands handler: {"cmd":"...","count":3,"last_exit_code":0}
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CommandRecord {
     pub cmd: String,
@@ -105,12 +97,8 @@ pub struct CommandRecord {
     pub last_exit_code: i32,
 }
 
-/// A behaviour pattern detected by the daemon.
-/// Patterns are just Suggestions filtered to category=="pattern".
 pub type Pattern = Suggestion;
 
-/// Response from the `trigger-summary` method.
-/// Matches Go: {"ok":true,"message":"analysis cycle queued"}
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SummaryResponse {
     #[serde(default)]
@@ -119,8 +107,6 @@ pub struct SummaryResponse {
     pub message: Option<String>,
 }
 
-/// AI query response.
-/// Matches Go ai-query handler: {"response":"...","routing":"local|cloud","latency_ms":42}
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AIQueryResponse {
     pub response: String,
@@ -128,42 +114,313 @@ pub struct AIQueryResponse {
     pub latency_ms: u64,
 }
 
+/// Connection status returned by `get_connection_status`.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ConnectionStatus {
+    pub transport: String,
+    pub connected: bool,
+    pub remote_addr: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Transport
+// ---------------------------------------------------------------------------
+
+/// Active transport connection. Held inside DaemonClient.
+enum Transport {
+    Unix(BufReader<UnixStream>),
+    Tcp(BufReader<StreamOwned<ClientConnection, TcpStream>>, String /* remote addr */),
+}
+
+impl Transport {
+    fn write_all(&mut self, data: &[u8]) -> Result<(), String> {
+        match self {
+            Transport::Unix(r) => r
+                .get_mut()
+                .write_all(data)
+                .map_err(|e| format!("write (unix): {}", e)),
+            Transport::Tcp(r, _) => r
+                .get_mut()
+                .write_all(data)
+                .map_err(|e| format!("write (tcp): {}", e)),
+        }
+    }
+
+    fn read_line(&mut self) -> Result<String, String> {
+        let mut line = String::new();
+        match self {
+            Transport::Unix(r) => r
+                .read_line(&mut line)
+                .map_err(|e| format!("read (unix): {}", e))?,
+            Transport::Tcp(r, _) => r
+                .read_line(&mut line)
+                .map_err(|e| format!("read (tcp): {}", e))?,
+        };
+        Ok(line)
+    }
+
+    fn transport_name(&self) -> &'static str {
+        match self {
+            Transport::Unix(_) => "unix",
+            Transport::Tcp(_, _) => "tcp",
+        }
+    }
+
+    fn remote_addr(&self) -> Option<String> {
+        match self {
+            Transport::Unix(_) => None,
+            Transport::Tcp(_, addr) => Some(addr.clone()),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Credential file
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+struct CredentialFile {
+    #[allow(dead_code)]
+    id: String,
+    token: String,
+    server_addr: String,
+    server_cert_spki: String,
+}
+
+// ---------------------------------------------------------------------------
+// SPKI fingerprint verifier
+// ---------------------------------------------------------------------------
+
+/// A rustls ServerCertVerifier that accepts a server certificate only if its
+/// SPKI fingerprint matches the pinned value from the credential file.
+#[derive(Debug)]
+struct SpkiVerifier {
+    /// Expected fingerprint in "sha256/<base64>" format.
+    expected: String,
+}
+
+impl ServerCertVerifier for SpkiVerifier {
+    fn verify_server_cert(
+        &self,
+        end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: UnixTime,
+    ) -> Result<ServerCertVerified, TlsError> {
+        // Parse using x509 raw DER: extract SPKI bytes.
+        // We use a minimal manual approach rather than pulling in an x509 crate.
+        let spki_bytes = extract_spki_der(end_entity.as_ref()).ok_or_else(|| {
+            TlsError::General("failed to extract SPKI from certificate".into())
+        })?;
+
+        let mut hasher = Sha256::new();
+        hasher.update(&spki_bytes);
+        let digest = hasher.finalize();
+        let fingerprint = format!(
+            "sha256/{}",
+            base64_encode(&digest)
+        );
+
+        if fingerprint == self.expected {
+            Ok(ServerCertVerified::assertion())
+        } else {
+            Err(TlsError::General(format!(
+                "TLS fingerprint mismatch: got {}, expected {}",
+                fingerprint, self.expected
+            )))
+        }
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &CertificateDer<'_>,
+        _dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, TlsError> {
+        // TLS 1.3 minimum is enforced via ClientConfig; TLS 1.2 won't be used.
+        Err(TlsError::General("TLS 1.2 not supported".into()))
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, TlsError> {
+        rustls::crypto::verify_tls13_signature(
+            message,
+            cert,
+            dss,
+            &rustls::crypto::ring::default_provider().signature_verification_algorithms,
+        )
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        rustls::crypto::ring::default_provider()
+            .signature_verification_algorithms
+            .supported_schemes()
+    }
+}
+
+/// Extracts the SubjectPublicKeyInfo DER bytes from a DER-encoded X.509 cert.
+///
+/// X.509 structure (simplified):
+///   SEQUENCE {                          -- Certificate
+///     SEQUENCE {                        -- TBSCertificate
+///       [0] INTEGER (version)
+///       INTEGER (serialNumber)
+///       SEQUENCE (signature alg)
+///       SEQUENCE (issuer)
+///       SEQUENCE (validity)
+///       SEQUENCE (subject)
+///       SEQUENCE { ... }               -- subjectPublicKeyInfo  ← we want this
+///       ...
+///     }
+///     ...
+///   }
+///
+/// We walk the DER manually using a minimal TLV parser.
+fn extract_spki_der(cert_der: &[u8]) -> Option<Vec<u8>> {
+    // Unwrap outer SEQUENCE (Certificate).
+    let tbs = der_unwrap_sequence(cert_der)?;
+    // Unwrap inner SEQUENCE (TBSCertificate).
+    let tbs_inner = der_unwrap_sequence(tbs)?;
+
+    // Skip: version [0] EXPLICIT (optional), serialNumber, signature, issuer, validity, subject.
+    // Each is a TLV; we skip 6 fields to reach subjectPublicKeyInfo.
+    let mut pos = tbs_inner;
+    for _ in 0..6 {
+        let (_, rest) = der_next_tlv(pos)?;
+        pos = rest;
+    }
+    // pos now points at the subjectPublicKeyInfo TLV. Return the whole TLV.
+    let (spki_tlv, _) = der_tlv_bytes(pos)?;
+    Some(spki_tlv.to_vec())
+}
+
+/// Returns the content bytes of the first DER SEQUENCE at `data`.
+fn der_unwrap_sequence(data: &[u8]) -> Option<&[u8]> {
+    if data.is_empty() || data[0] != 0x30 {
+        return None;
+    }
+    let (len, hdr) = der_length(&data[1..])?;
+    let start = 1 + hdr;
+    if data.len() < start + len {
+        return None;
+    }
+    Some(&data[start..start + len])
+}
+
+/// Returns (value_bytes, rest_after_tlv) for the next TLV in `data`.
+fn der_next_tlv(data: &[u8]) -> Option<(&[u8], &[u8])> {
+    if data.is_empty() {
+        return None;
+    }
+    let (len, hdr) = der_length(&data[1..])?;
+    let end = 1 + hdr + len;
+    if data.len() < end {
+        return None;
+    }
+    Some((&data[1 + hdr..end], &data[end..]))
+}
+
+/// Returns (full_tlv_bytes, rest) for the next TLV in `data`.
+fn der_tlv_bytes(data: &[u8]) -> Option<(&[u8], &[u8])> {
+    if data.is_empty() {
+        return None;
+    }
+    let (len, hdr) = der_length(&data[1..])?;
+    let end = 1 + hdr + len;
+    if data.len() < end {
+        return None;
+    }
+    Some((&data[..end], &data[end..]))
+}
+
+/// Returns (length_value, bytes_consumed_for_length_encoding).
+fn der_length(data: &[u8]) -> Option<(usize, usize)> {
+    if data.is_empty() {
+        return None;
+    }
+    let b = data[0] as usize;
+    if b < 0x80 {
+        return Some((b, 1));
+    }
+    let n = b & 0x7f;
+    if n == 0 || n > 4 || data.len() < 1 + n {
+        return None;
+    }
+    let mut len = 0usize;
+    for i in 0..n {
+        len = (len << 8) | (data[1 + i] as usize);
+    }
+    Some((len, 1 + n))
+}
+
+fn base64_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0] as usize;
+        let b1 = if chunk.len() > 1 { chunk[1] as usize } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as usize } else { 0 };
+        let combined = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TABLE[(combined >> 18) & 0x3f] as char);
+        out.push(TABLE[(combined >> 12) & 0x3f] as char);
+        if chunk.len() > 1 {
+            out.push(TABLE[(combined >> 6) & 0x3f] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(TABLE[combined & 0x3f] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
+
 // ---------------------------------------------------------------------------
 // DaemonClient
 // ---------------------------------------------------------------------------
 
-const MAX_RECONNECT_ATTEMPTS: u32 = 10;
-const RECONNECT_BACKOFF: Duration = Duration::from_secs(2);
+/// Exponential backoff durations for subscribe reconnect loops.
+/// Caps at 30s. Call() does not retry — the frontend polls every 5–30s.
+const BACKOFF_STEPS: &[u64] = &[2, 4, 8, 16, 30];
 
-/// DaemonClient manages the connection to the sigild Unix socket.
-///
-/// The socket path defaults to `/run/user/$UID/sigild.sock` but can be
-/// overridden at construction time. Reconnection is handled transparently
-/// inside `call`, up to `MAX_RECONNECT_ATTEMPTS` attempts with a fixed
-/// 2-second backoff.
+/// DaemonClient manages a connection to sigild over Unix socket or TCP+TLS.
 pub struct DaemonClient {
     socket_path: String,
-    stream: Option<UnixStream>,
+    transport: Option<Transport>,
+    /// Credential file path for TCP reconnects.
+    tcp_credential_path: Option<String>,
+    /// TCP address override.
+    tcp_addr_override: Option<String>,
 }
 
 impl DaemonClient {
-    /// Creates a new `DaemonClient` using the default socket path derived
-    /// from the current user's UID.
+    /// Creates a new `DaemonClient` using the default Unix socket path.
     pub fn new() -> Self {
         let uid = get_uid();
         let socket_path = format!("/run/user/{}/sigild.sock", uid);
         Self {
             socket_path,
-            stream: None,
+            transport: None,
+            tcp_credential_path: None,
+            tcp_addr_override: None,
         }
     }
 
-    /// Creates a new `DaemonClient` with a caller-supplied socket path.
-    #[allow(dead_code)] // used in tests and by callers that override the default socket path
+    /// Creates a new `DaemonClient` with a caller-supplied Unix socket path.
+    #[allow(dead_code)]
     pub fn with_path(socket_path: impl Into<String>) -> Self {
         Self {
             socket_path: socket_path.into(),
-            stream: None,
+            transport: None,
+            tcp_credential_path: None,
+            tcp_addr_override: None,
         }
     }
 
@@ -176,74 +433,125 @@ impl DaemonClient {
     // Connection management
     // -----------------------------------------------------------------------
 
-    fn connect(&mut self) -> Result<(), String> {
-        match UnixStream::connect(&self.socket_path) {
-            Ok(stream) => {
-                self.stream = Some(stream);
-                Ok(())
-            }
-            Err(e) => Err(format!(
-                "daemon not reachable at {}: {}",
-                self.socket_path, e
-            )),
+    fn connect_unix(&mut self) -> Result<(), String> {
+        let stream = UnixStream::connect(&self.socket_path).map_err(|e| {
+            format!("daemon not reachable at {}: {}", self.socket_path, e)
+        })?;
+        // Match TCP's 30s read timeout so a hung daemon can't block the mutex.
+        stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
+        self.transport = Some(Transport::Unix(BufReader::new(stream)));
+        Ok(())
+    }
+
+    /// Connects to a remote daemon over TCP+TLS using a credential file.
+    pub fn connect_tcp(
+        &mut self,
+        addr: &str,
+        credential_path: &str,
+    ) -> Result<(), String> {
+        // Load credential file.
+        let data = std::fs::read_to_string(credential_path)
+            .map_err(|e| format!("read credential file {}: {}", credential_path, e))?;
+        let cred: CredentialFile = serde_json::from_str(&data)
+            .map_err(|e| format!("parse credential file: {}", e))?;
+
+        let target_addr = if !addr.is_empty() {
+            addr.to_string()
+        } else {
+            cred.server_addr.clone()
+        };
+
+        // Build rustls ClientConfig with SPKI fingerprint verifier.
+        let verifier = Arc::new(SpkiVerifier {
+            expected: cred.server_cert_spki.clone(),
+        });
+        let config = ClientConfig::builder()
+            .dangerous()
+            .with_custom_certificate_verifier(verifier)
+            .with_no_client_auth();
+
+        // Connect TCP.
+        let tcp = TcpStream::connect(&target_addr)
+            .map_err(|e| format!("TCP connect to {}: {}", target_addr, e))?;
+        tcp.set_read_timeout(Some(Duration::from_secs(30))).ok();
+        tcp.set_write_timeout(Some(Duration::from_secs(10))).ok();
+
+        // TLS handshake.
+        let server_name = target_addr
+            .split(':')
+            .next()
+            .unwrap_or("localhost")
+            .to_string()
+            .try_into()
+            .map_err(|_| "invalid server name".to_string())?;
+        let conn = ClientConnection::new(Arc::new(config), server_name)
+            .map_err(|e| format!("TLS init: {}", e))?;
+        let mut tls_stream = StreamOwned::new(conn, tcp);
+
+        // Send auth request.
+        let auth_req = serde_json::json!({
+            "method": "auth",
+            "payload": { "token": cred.token }
+        });
+        let mut frame = serde_json::to_string(&auth_req)
+            .map_err(|e| format!("serialize auth: {}", e))?;
+        frame.push('\n');
+        tls_stream
+            .write_all(frame.as_bytes())
+            .map_err(|e| format!("write auth: {}", e))?;
+
+        // Read auth response.
+        let mut reader = BufReader::new(tls_stream);
+        let mut line = String::new();
+        reader
+            .read_line(&mut line)
+            .map_err(|e| format!("read auth response: {}", e))?;
+        let resp: serde_json::Value = serde_json::from_str(line.trim())
+            .map_err(|e| format!("parse auth response: {}", e))?;
+        if !resp["ok"].as_bool().unwrap_or(false) {
+            let err = resp["error"].as_str().unwrap_or("unauthorized");
+            return Err(format!("auth failed: {}", err));
         }
+
+        self.tcp_credential_path = Some(credential_path.to_string());
+        self.transport = Some(Transport::Tcp(reader, target_addr));
+        Ok(())
     }
 
     fn ensure_connected(&mut self) -> Result<(), String> {
-        if self.stream.is_some() {
+        if self.transport.is_some() {
             return Ok(());
         }
-        self.connect()
+        // Reconnect based on which transport was last configured.
+        if let Some(cred_path) = self.tcp_credential_path.clone() {
+            let addr = self.tcp_addr_override.clone().unwrap_or_default();
+            self.connect_tcp(&addr, &cred_path)
+        } else {
+            self.connect_unix()
+        }
     }
 
     // -----------------------------------------------------------------------
     // Core RPC — newline-delimited JSON
     // -----------------------------------------------------------------------
 
-    /// Sends a single request to the daemon and returns the parsed result.
-    ///
-    /// On any I/O error the connection is dropped and a reconnect is attempted
-    /// with `RECONNECT_BACKOFF` delay between tries. Returns an error if the
-    /// daemon cannot be reached after `MAX_RECONNECT_ATTEMPTS`.
     fn call(
         &mut self,
         method: &str,
         payload: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
-        for attempt in 0..MAX_RECONNECT_ATTEMPTS {
-            if attempt > 0 {
-                thread::sleep(RECONNECT_BACKOFF);
-            }
-
-            if let Err(e) = self.ensure_connected() {
-                if attempt + 1 == MAX_RECONNECT_ATTEMPTS {
-                    return Err(format!(
-                        "daemon unavailable after {} attempts: {}",
-                        MAX_RECONNECT_ATTEMPTS, e
-                    ));
-                }
-                // Drop stale stream and retry.
-                self.stream = None;
-                continue;
-            }
-
-            let result = self.do_call(method, &payload);
-            match result {
-                Ok(val) => return Ok(val),
-                Err(e) => {
-                    // Drop the stream so the next iteration reconnects.
-                    self.stream = None;
-                    if attempt + 1 == MAX_RECONNECT_ATTEMPTS {
-                        return Err(format!(
-                            "daemon call failed after {} attempts: {}",
-                            MAX_RECONNECT_ATTEMPTS, e
-                        ));
-                    }
-                }
-            }
+        // Single attempt — no retry loop. The mutex must not be held for multiple
+        // seconds; the frontend's polling intervals (5s–30s) handle reconnection.
+        if let Err(e) = self.ensure_connected() {
+            self.transport = None;
+            return Err(format!("daemon unavailable: {}", e));
         }
-        // Unreachable — the loop always returns in the last iteration.
-        Err("daemon call failed: unexpected loop exit".into())
+
+        let result = self.do_call(method, &payload);
+        if result.is_err() {
+            self.transport = None;
+        }
+        result
     }
 
     fn do_call(
@@ -251,27 +559,16 @@ impl DaemonClient {
         method: &str,
         payload: &serde_json::Value,
     ) -> Result<serde_json::Value, String> {
-        let stream = self.stream.as_mut().ok_or("no active connection")?;
+        let transport = self.transport.as_mut().ok_or("no active connection")?;
 
-        // Serialize and write the request frame.
         let req = Request { method, payload: payload.clone() };
         let mut frame =
             serde_json::to_string(&req).map_err(|e| format!("serialize request: {}", e))?;
         frame.push('\n');
 
-        stream
-            .write_all(frame.as_bytes())
-            .map_err(|e| format!("write to socket: {}", e))?;
-
-        // Read a single response line.
-        let read_stream = stream
-            .try_clone()
-            .map_err(|e| format!("clone stream for read: {}", e))?;
-        let mut reader = BufReader::new(read_stream);
-        let mut line = String::new();
-        reader
-            .read_line(&mut line)
-            .map_err(|e| format!("read from socket: {}", e))?;
+        // Write then read on the same mutable reference — no try_clone needed.
+        transport.write_all(frame.as_bytes())?;
+        let line = transport.read_line()?;
 
         if line.is_empty() {
             return Err("daemon closed connection".into());
@@ -288,56 +585,61 @@ impl DaemonClient {
         Ok(resp.payload)
     }
 
+    /// Returns the current connection status.
+    pub fn connection_status(&self) -> ConnectionStatus {
+        match &self.transport {
+            None => ConnectionStatus {
+                transport: "unix".into(),
+                connected: false,
+                remote_addr: None,
+            },
+            Some(t) => ConnectionStatus {
+                transport: t.transport_name().into(),
+                connected: true,
+                remote_addr: t.remote_addr(),
+            },
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Domain methods
     // -----------------------------------------------------------------------
 
-    /// Returns the current daemon status.
     pub fn status(&mut self) -> Result<StatusResponse, String> {
         let val = self.call("status", serde_json::Value::Null)?;
         serde_json::from_value(val).map_err(|e| format!("parse status: {}", e))
     }
 
-    /// Returns recent shell events from the daemon.
     pub fn events(&mut self) -> Result<Vec<ShellEvent>, String> {
         let val = self.call("events", serde_json::Value::Null)?;
         serde_json::from_value(val).map_err(|e| format!("parse events: {}", e))
     }
 
-    /// Returns command suggestions from the daemon.
     pub fn suggestions(&mut self) -> Result<Vec<Suggestion>, String> {
         let val = self.call("suggestions", serde_json::Value::Null)?;
         serde_json::from_value(val).map_err(|e| format!("parse suggestions: {}", e))
     }
 
-    /// Returns file entries from the daemon.
     pub fn files(&mut self) -> Result<Vec<FileEntry>, String> {
         let val = self.call("files", serde_json::Value::Null)?;
         serde_json::from_value(val).map_err(|e| format!("parse files: {}", e))
     }
 
-    /// Returns known command records from the daemon.
     pub fn commands(&mut self) -> Result<Vec<CommandRecord>, String> {
         let val = self.call("commands", serde_json::Value::Null)?;
         serde_json::from_value(val).map_err(|e| format!("parse commands: {}", e))
     }
 
-    /// Returns behaviour patterns detected by the daemon.
     pub fn patterns(&mut self) -> Result<Vec<Pattern>, String> {
         let val = self.call("patterns", serde_json::Value::Null)?;
         serde_json::from_value(val).map_err(|e| format!("parse patterns: {}", e))
     }
 
-    /// Asks the daemon to trigger an analysis cycle.
     pub fn trigger_summary(&mut self) -> Result<SummaryResponse, String> {
         let val = self.call("trigger-summary", serde_json::Value::Null)?;
         serde_json::from_value(val).map_err(|e| format!("parse summary: {}", e))
     }
 
-    /// Sends suggestion feedback to the daemon.
-    ///
-    /// `suggestion_id` identifies the suggestion.
-    /// `outcome` is `"accepted"` or `"dismissed"`.
     pub fn feedback(&mut self, suggestion_id: i64, outcome: &str) -> Result<(), String> {
         let payload = serde_json::json!({
             "suggestion_id": suggestion_id,
@@ -347,59 +649,46 @@ impl DaemonClient {
         Ok(())
     }
 
-    /// Purges all local data from the daemon store.
     pub fn purge(&mut self) -> Result<(), String> {
         self.call("purge", serde_json::Value::Null)?;
         Ok(())
     }
 
-    /// Requests the daemon to undo the most recent undoable action.
     pub fn undo(&mut self) -> Result<serde_json::Value, String> {
         self.call("undo", serde_json::Value::Null)
     }
 
-    /// Notifies the daemon that the active tool view has changed.
     pub fn view_changed(&mut self, view: &str) -> Result<(), String> {
         let payload = serde_json::json!({ "view": view });
         self.call("view-changed", payload)?;
         Ok(())
     }
 
-    /// Returns a preview of the fleet report payload without sending it.
     pub fn fleet_preview(&mut self) -> Result<serde_json::Value, String> {
         self.call("fleet-preview", serde_json::Value::Null)
     }
 
-    /// Opts out of fleet reporting and clears the pending queue.
     pub fn fleet_opt_out(&mut self) -> Result<(), String> {
         self.call("fleet-opt-out", serde_json::Value::Null)?;
         Ok(())
     }
 
-    /// Returns resolved runtime configuration with API keys masked.
     pub fn config(&mut self) -> Result<serde_json::Value, String> {
         self.call("config", serde_json::Value::Null)
     }
 
-    /// Returns terminal session summaries from the last 24 hours.
     pub fn sessions(&mut self) -> Result<serde_json::Value, String> {
         self.call("sessions", serde_json::Value::Null)
     }
 
-    /// Returns recent undoable actions from the actuator.
     pub fn actions(&mut self) -> Result<serde_json::Value, String> {
         self.call("actions", serde_json::Value::Null)
     }
 
-    /// Returns the current fleet routing policy.
     pub fn fleet_policy(&mut self) -> Result<serde_json::Value, String> {
         self.call("fleet-policy", serde_json::Value::Null)
     }
 
-    /// Sends a natural-language query to the daemon's AI routing layer.
-    ///
-    /// Returns the AI response along with the routing decision and measured
-    /// latency.
     pub fn ai_query(&mut self, query: &str, context: &str) -> Result<AIQueryResponse, String> {
         let payload = serde_json::json!({
             "query": query,
@@ -414,181 +703,279 @@ impl DaemonClient {
 // Push subscription — runs in a dedicated thread
 // ---------------------------------------------------------------------------
 
-/// Spawns a background thread that opens a dedicated socket connection for
-/// receiving push events from the daemon. Each received JSON line is emitted
-/// as a `daemon-suggestion` Tauri event.
+/// Spawns a background thread subscribed to "suggestions" push events.
 ///
-/// Used by Issue #34. The thread exits cleanly when the app handle is dropped
-/// or the daemon closes the connection.
-pub fn subscribe_suggestions(app: AppHandle, socket_path: String) {
+/// If `credential_path` is Some, connects over TCP+TLS using the credential file.
+/// Otherwise connects over the Unix socket at `socket_path`.
+pub fn subscribe_suggestions(
+    app: AppHandle,
+    socket_path: String,
+    credential_path: Option<String>,
+    addr_override: Option<String>,
+) {
     thread::spawn(move || {
-        let mut attempt: u32 = 0;
-        loop {
-            if attempt > 0 {
-                thread::sleep(RECONNECT_BACKOFF);
-            }
-            attempt += 1;
-
-            let stream = match UnixStream::connect(&socket_path) {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!(
-                        "subscribe_suggestions: connect attempt {}: {}",
-                        attempt, e
-                    );
-                    if attempt >= MAX_RECONNECT_ATTEMPTS {
-                        eprintln!("subscribe_suggestions: giving up after {} attempts", attempt);
-                        return;
-                    }
-                    continue;
-                }
-            };
-
-            // Send the subscribe request frame.
-            let req = Request {
-                method: "subscribe",
-                payload: serde_json::json!({"topic": "suggestions"}),
-            };
-            let mut frame = match serde_json::to_string(&req) {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("subscribe_suggestions: serialize: {}", e);
-                    return;
-                }
-            };
-            frame.push('\n');
-
-            let mut write_stream = match stream.try_clone() {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("subscribe_suggestions: clone stream: {}", e);
-                    continue;
-                }
-            };
-
-            if let Err(e) = write_stream.write_all(frame.as_bytes()) {
-                eprintln!("subscribe_suggestions: write subscribe frame: {}", e);
-                continue;
-            }
-
-            // Read push events until the daemon drops the connection.
-            let reader = BufReader::new(stream);
-            for line_result in reader.lines() {
-                match line_result {
-                    Ok(line) if line.is_empty() => continue,
-                    Ok(line) => {
-                        // Parse the push payload and emit it as a Tauri event.
-                        match serde_json::from_str::<serde_json::Value>(&line) {
-                            Ok(payload) => {
-                                if let Err(e) = app.emit("daemon-suggestion", payload) {
-                                    eprintln!("subscribe_suggestions: emit: {}", e);
-                                }
-                            }
-                            Err(e) => {
-                                eprintln!("subscribe_suggestions: parse push event: {}", e);
-                            }
-                        }
-                    }
-                    Err(_) => {
-                        // Connection closed by daemon — reconnect.
-                        break;
-                    }
-                }
-            }
-
-            // Reset attempt counter so reconnection tries the full budget again.
-            attempt = 0;
+        if let Some(cred) = credential_path {
+            subscribe_tcp_topic(app, cred, addr_override.unwrap_or_default(), "suggestions", "daemon-suggestion");
+        } else {
+            subscribe_unix_topic(app, socket_path, "suggestions", "daemon-suggestion");
         }
     });
 }
 
-// ---------------------------------------------------------------------------
-// Push subscription — actuations
-// ---------------------------------------------------------------------------
-
-/// Spawns a background thread that opens a dedicated socket connection for
-/// receiving actuation push events from the daemon. Each received JSON line
-/// is emitted as a `daemon-actuation` Tauri event.
-pub fn subscribe_actuations(app: AppHandle, socket_path: String) {
+/// Spawns a background thread subscribed to "actuations" push events.
+///
+/// If `credential_path` is Some, connects over TCP+TLS using the credential file.
+/// Otherwise connects over the Unix socket at `socket_path`.
+pub fn subscribe_actuations(
+    app: AppHandle,
+    socket_path: String,
+    credential_path: Option<String>,
+    addr_override: Option<String>,
+) {
     thread::spawn(move || {
-        let mut attempt: u32 = 0;
-        loop {
-            if attempt > 0 {
-                thread::sleep(RECONNECT_BACKOFF);
-            }
-            attempt += 1;
-
-            let stream = match UnixStream::connect(&socket_path) {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!(
-                        "subscribe_actuations: connect attempt {}: {}",
-                        attempt, e
-                    );
-                    if attempt >= MAX_RECONNECT_ATTEMPTS {
-                        eprintln!("subscribe_actuations: giving up after {} attempts", attempt);
-                        return;
-                    }
-                    continue;
-                }
-            };
-
-            let req = Request {
-                method: "subscribe",
-                payload: serde_json::json!({"topic": "actuations"}),
-            };
-            let mut frame = match serde_json::to_string(&req) {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("subscribe_actuations: serialize: {}", e);
-                    return;
-                }
-            };
-            frame.push('\n');
-
-            let mut write_stream = match stream.try_clone() {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("subscribe_actuations: clone stream: {}", e);
-                    continue;
-                }
-            };
-
-            if let Err(e) = write_stream.write_all(frame.as_bytes()) {
-                eprintln!("subscribe_actuations: write subscribe frame: {}", e);
-                continue;
-            }
-
-            let reader = BufReader::new(stream);
-            for line_result in reader.lines() {
-                match line_result {
-                    Ok(line) if line.is_empty() => continue,
-                    Ok(line) => {
-                        match serde_json::from_str::<serde_json::Value>(&line) {
-                            Ok(payload) => {
-                                if let Err(e) = app.emit("daemon-actuation", payload) {
-                                    eprintln!("subscribe_actuations: emit: {}", e);
-                                }
-                            }
-                            Err(e) => {
-                                eprintln!("subscribe_actuations: parse push event: {}", e);
-                            }
-                        }
-                    }
-                    Err(_) => break,
-                }
-            }
-
-            attempt = 0;
+        if let Some(cred) = credential_path {
+            subscribe_tcp_topic(app, cred, addr_override.unwrap_or_default(), "actuations", "daemon-actuation");
+        } else {
+            subscribe_unix_topic(app, socket_path, "actuations", "daemon-actuation");
         }
     });
+}
+
+fn subscribe_tcp_topic(
+    app: AppHandle,
+    credential_path: String,
+    addr_override: String,
+    topic: &str,
+    event_name: &str,
+) {
+    let mut attempt: u32 = 0;
+    let mut logged_waiting = false;
+    loop {
+        if attempt > 0 {
+            let secs = BACKOFF_STEPS[(attempt as usize - 1).min(BACKOFF_STEPS.len() - 1)];
+            thread::sleep(Duration::from_secs(secs));
+        }
+        attempt += 1;
+
+        // Load credential.
+        let data = match std::fs::read_to_string(&credential_path) {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("subscribe_{} (tcp): read credential: {}", topic, e);
+                return; // credential file missing — no point retrying
+            }
+        };
+        let cred: CredentialFile = match serde_json::from_str(&data) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("subscribe_{} (tcp): parse credential: {}", topic, e);
+                return; // credential file corrupt — no point retrying
+            }
+        };
+
+        let addr = if !addr_override.is_empty() {
+            addr_override.clone()
+        } else {
+            cred.server_addr.clone()
+        };
+
+        // Connect + TLS.
+        let tcp = match TcpStream::connect(&addr) {
+            Ok(t) => t,
+            Err(e) => {
+                if !logged_waiting {
+                    eprintln!("subscribe_{} (tcp): daemon not reachable ({}); will keep retrying", topic, e);
+                    logged_waiting = true;
+                }
+                continue;
+            }
+        };
+
+        let verifier = Arc::new(SpkiVerifier { expected: cred.server_cert_spki.clone() });
+        let config = ClientConfig::builder()
+            .dangerous()
+            .with_custom_certificate_verifier(verifier)
+            .with_no_client_auth();
+
+        let server_name: rustls::pki_types::ServerName<'static> = match addr
+            .split(':')
+            .next()
+            .unwrap_or("localhost")
+            .to_string()
+            .try_into()
+        {
+            Ok(n) => n,
+            Err(_) => {
+                eprintln!("subscribe_{} (tcp): invalid server name", topic);
+                return;
+            }
+        };
+
+        let conn = match ClientConnection::new(Arc::new(config), server_name) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("subscribe_{} (tcp): TLS init: {}", topic, e);
+                continue;
+            }
+        };
+        let mut tls_stream = StreamOwned::new(conn, tcp);
+
+        // Auth handshake.
+        let auth_req = serde_json::json!({
+            "method": "auth",
+            "payload": { "token": cred.token }
+        });
+        let mut auth_frame = match serde_json::to_string(&auth_req) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("subscribe_{} (tcp): serialize auth: {}", topic, e);
+                return;
+            }
+        };
+        auth_frame.push('\n');
+
+        if let Err(e) = tls_stream.write_all(auth_frame.as_bytes()) {
+            eprintln!("subscribe_{} (tcp): write auth: {}", topic, e);
+            continue;
+        }
+
+        let mut reader = BufReader::new(tls_stream);
+        let mut auth_line = String::new();
+        if let Err(e) = reader.read_line(&mut auth_line) {
+            eprintln!("subscribe_{} (tcp): read auth response: {}", topic, e);
+            continue;
+        }
+        let auth_resp: serde_json::Value = match serde_json::from_str(auth_line.trim()) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("subscribe_{} (tcp): parse auth response: {}", topic, e);
+                continue;
+            }
+        };
+        if !auth_resp["ok"].as_bool().unwrap_or(false) {
+            eprintln!("subscribe_{} (tcp): auth failed", topic);
+            return; // credential revoked — no point retrying
+        }
+
+        // Send subscribe request.
+        let sub_req = serde_json::json!({
+            "method": "subscribe",
+            "payload": { "topic": topic }
+        });
+        let mut sub_frame = match serde_json::to_string(&sub_req) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        sub_frame.push('\n');
+
+        if let Err(e) = reader.get_mut().write_all(sub_frame.as_bytes()) {
+            eprintln!("subscribe_{} (tcp): write subscribe: {}", topic, e);
+            continue;
+        }
+
+        // Read and discard the subscribe acknowledgement.
+        let mut ack = String::new();
+        let _ = reader.read_line(&mut ack);
+
+        // Successfully connected — reset backoff and suppress flag.
+        attempt = 0;
+        logged_waiting = false;
+
+        // Read push events.
+        for line_result in reader.lines() {
+            match line_result {
+                Ok(line) if line.is_empty() => continue,
+                Ok(line) => match serde_json::from_str::<serde_json::Value>(&line) {
+                    Ok(payload) => {
+                        if let Err(e) = app.emit(event_name, payload) {
+                            eprintln!("subscribe_{} (tcp): emit: {}", topic, e);
+                        }
+                    }
+                    Err(e) => eprintln!("subscribe_{} (tcp): parse event: {}", topic, e),
+                },
+                Err(_) => break,
+            }
+        }
+    }
+}
+
+fn subscribe_unix_topic(app: AppHandle, socket_path: String, topic: &str, event_name: &str) {
+    let mut attempt: u32 = 0;
+    let mut logged_waiting = false;
+    loop {
+        if attempt > 0 {
+            let secs = BACKOFF_STEPS[(attempt as usize - 1).min(BACKOFF_STEPS.len() - 1)];
+            thread::sleep(Duration::from_secs(secs));
+        }
+        attempt += 1;
+
+        let stream = match UnixStream::connect(&socket_path) {
+            Ok(s) => s,
+            Err(e) => {
+                // Log the first failure; suppress repeats until success resets the counter.
+                if !logged_waiting {
+                    eprintln!("subscribe_{}: daemon not reachable ({}); will keep retrying", topic, e);
+                    logged_waiting = true;
+                }
+                continue;
+            }
+        };
+
+        let req = Request {
+            method: "subscribe",
+            payload: serde_json::json!({"topic": topic}),
+        };
+        let mut frame = match serde_json::to_string(&req) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("subscribe_{}: serialize: {}", topic, e);
+                return;
+            }
+        };
+        frame.push('\n');
+
+        // Write subscribe frame using a cloned write-side stream.
+        let mut write_stream = match stream.try_clone() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("subscribe_{}: clone stream: {}", topic, e);
+                continue;
+            }
+        };
+
+        if let Err(e) = write_stream.write_all(frame.as_bytes()) {
+            eprintln!("subscribe_{}: write subscribe frame: {}", topic, e);
+            continue;
+        }
+
+        // Successfully connected — reset backoff and suppress flag.
+        attempt = 0;
+        logged_waiting = false;
+
+        let reader = BufReader::new(stream);
+        for line_result in reader.lines() {
+            match line_result {
+                Ok(line) if line.is_empty() => continue,
+                Ok(line) => match serde_json::from_str::<serde_json::Value>(&line) {
+                    Ok(payload) => {
+                        if let Err(e) = app.emit(event_name, payload) {
+                            eprintln!("subscribe_{}: emit: {}", topic, e);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("subscribe_{}: parse push event: {}", topic, e);
+                    }
+                },
+                Err(_) => break,
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Tauri commands
 // ---------------------------------------------------------------------------
 
-/// Returns the current daemon status.
 #[tauri::command]
 pub fn daemon_status(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
@@ -596,7 +983,6 @@ pub fn daemon_status(
     state.lock().unwrap().status()
 }
 
-/// Returns recent shell events recorded by the daemon.
 #[tauri::command]
 pub fn daemon_events(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
@@ -604,7 +990,6 @@ pub fn daemon_events(
     state.lock().unwrap().events()
 }
 
-/// Returns command suggestions from the daemon.
 #[tauri::command]
 pub fn daemon_suggestions(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
@@ -612,7 +997,6 @@ pub fn daemon_suggestions(
     state.lock().unwrap().suggestions()
 }
 
-/// Returns file entries from the daemon.
 #[tauri::command]
 pub fn daemon_files(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
@@ -620,7 +1004,6 @@ pub fn daemon_files(
     state.lock().unwrap().files()
 }
 
-/// Returns known command records from the daemon.
 #[tauri::command]
 pub fn daemon_commands(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
@@ -628,7 +1011,6 @@ pub fn daemon_commands(
     state.lock().unwrap().commands()
 }
 
-/// Returns behaviour patterns detected by the daemon.
 #[tauri::command]
 pub fn daemon_patterns(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
@@ -636,7 +1018,6 @@ pub fn daemon_patterns(
     state.lock().unwrap().patterns()
 }
 
-/// Asks the daemon to generate a session summary and returns it.
 #[tauri::command]
 pub fn daemon_trigger_summary(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
@@ -644,20 +1025,15 @@ pub fn daemon_trigger_summary(
     state.lock().unwrap().trigger_summary()
 }
 
-/// Sends suggestion feedback to the daemon.
 #[tauri::command]
 pub fn daemon_feedback(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
     suggestion_id: i64,
     outcome: String,
 ) -> Result<(), String> {
-    state
-        .lock()
-        .unwrap()
-        .feedback(suggestion_id, &outcome)
+    state.lock().unwrap().feedback(suggestion_id, &outcome)
 }
 
-/// Purges all local daemon data.
 #[tauri::command]
 pub fn daemon_purge(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
@@ -665,7 +1041,6 @@ pub fn daemon_purge(
     state.lock().unwrap().purge()
 }
 
-/// Requests the daemon to undo the most recent undoable action.
 #[tauri::command]
 pub fn daemon_undo(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
@@ -673,8 +1048,6 @@ pub fn daemon_undo(
     state.lock().unwrap().undo()
 }
 
-/// Notifies the daemon that the active tool view has changed, triggering
-/// a keybinding profile switch.
 #[tauri::command]
 pub fn daemon_view_changed(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
@@ -683,7 +1056,6 @@ pub fn daemon_view_changed(
     state.lock().unwrap().view_changed(&view)
 }
 
-/// Returns a preview of the fleet report data.
 #[tauri::command]
 pub fn daemon_fleet_preview(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
@@ -691,7 +1063,6 @@ pub fn daemon_fleet_preview(
     state.lock().unwrap().fleet_preview()
 }
 
-/// Opts out of fleet reporting.
 #[tauri::command]
 pub fn daemon_fleet_opt_out(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
@@ -699,7 +1070,6 @@ pub fn daemon_fleet_opt_out(
     state.lock().unwrap().fleet_opt_out()
 }
 
-/// Returns resolved runtime configuration.
 #[tauri::command]
 pub fn daemon_config(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
@@ -707,7 +1077,6 @@ pub fn daemon_config(
     state.lock().unwrap().config()
 }
 
-/// Returns terminal session summaries.
 #[tauri::command]
 pub fn daemon_sessions(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
@@ -715,7 +1084,6 @@ pub fn daemon_sessions(
     state.lock().unwrap().sessions()
 }
 
-/// Returns recent undoable actions.
 #[tauri::command]
 pub fn daemon_actions(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
@@ -723,7 +1091,6 @@ pub fn daemon_actions(
     state.lock().unwrap().actions()
 }
 
-/// Returns the current fleet routing policy.
 #[tauri::command]
 pub fn daemon_fleet_policy(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
@@ -731,7 +1098,6 @@ pub fn daemon_fleet_policy(
     state.lock().unwrap().fleet_policy()
 }
 
-/// Sends an AI query to the daemon via the inference engine.
 #[tauri::command]
 pub fn daemon_ai_query(
     state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
@@ -741,12 +1107,19 @@ pub fn daemon_ai_query(
     state.lock().unwrap().ai_query(&query, &context)
 }
 
+/// Returns the current daemon connection status (transport, connected, remote_addr).
+#[tauri::command]
+pub fn get_connection_status(
+    state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
+) -> ConnectionStatus {
+    state.lock().unwrap().connection_status()
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Returns the current process UID via the underlying syscall.
 pub fn get_uid() -> u32 {
-    // SAFETY: getuid() is always safe — no arguments, no failure mode.
+    // SAFETY: getuid() is always safe.
     unsafe { libc::getuid() }
 }

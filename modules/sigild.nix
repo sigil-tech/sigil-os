@@ -84,6 +84,22 @@ in {
         description = "Fleet aggregation layer endpoint URL";
       };
     };
+
+    network = {
+      enable = mkEnableOption "TCP network listener for remote sigil-shell connections";
+
+      bind = mkOption {
+        type = types.str;
+        default = "0.0.0.0";
+        description = "IP address to bind the TCP listener on";
+      };
+
+      port = mkOption {
+        type = types.port;
+        default = 7773;
+        description = "TCP port for the network listener";
+      };
+    };
   };
 
   config = mkIf cfg.enable {
@@ -115,6 +131,11 @@ in {
       [fleet]
       enabled = ${boolToString cfg.fleet.enable}
       endpoint = "${cfg.fleet.endpoint}"
+
+      [network]
+      enabled = ${boolToString cfg.network.enable}
+      bind    = "${cfg.network.bind}"
+      port    = ${toString cfg.network.port}
     '';
 
     # Pre-create data directories so the sandboxed service can write to them
@@ -122,6 +143,7 @@ in {
       for u in /home/*; do
         user=$(basename "$u")
         install -d -o "$user" -g users "$u/.local/share/sigild"
+        install -d -o "$user" -g users "$u/.local/share/sigil"
         install -d -o "$user" -g users "$u/.config/sigil"
         install -d -o "$user" -g users "$u/.cache/sigil"
       done
@@ -148,6 +170,7 @@ in {
         ProtectHome = "read-only";
         ReadWritePaths = [
           "%h/.local/share/sigild"
+          "%h/.local/share/sigil"   # network: TLS cert + credentials.json
           "%h/.config/sigil"
           "%h/.cache/sigil"
           "%t"  # XDG_RUNTIME_DIR — needed for sigild.sock
