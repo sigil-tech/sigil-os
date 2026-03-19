@@ -40,27 +40,13 @@ build-iso: ## Build full ISO and copy to Windows Downloads
 
 # ─── VM testing ───────────────────────────────────────────────────
 
-build-vm: ## Build VM system closure
-	$(NIX) build .#nixosConfigurations.sigil-vm.config.system.build.toplevel
-	@echo "VM system built at ./result"
+build-vm: ## Build VM runner script
+	$(NIX) build .#nixosConfigurations.sigil-vm.config.system.build.vm
+	@echo "VM runner built at ./result/bin/run-*-vm"
 
-run-vm: build-vm ## Build and boot VM in QEMU (no GPU, SSH on localhost:2222)
-	@if [ ! -f "$(VM_DISK)" ]; then \
-		echo "==> Creating VM disk..."; \
-		qemu-img create -f qcow2 "$(VM_DISK)" 20G; \
-	fi
+run-vm: build-vm ## Build and boot VM in QEMU (SSH: ssh -p 2222 engineer@localhost)
 	@echo "==> Booting Sigil OS VM (SSH: ssh -p 2222 engineer@localhost)"
-	qemu-system-x86_64 \
-		-m $(VM_MEMORY) \
-		-smp $(VM_CPUS) \
-		-enable-kvm \
-		-drive file=$(VM_DISK),format=qcow2,if=virtio \
-		-kernel ./result/kernel \
-		-initrd ./result/initrd \
-		-append "init=$(shell readlink -f ./result/init) root=/dev/vda1 console=ttyS0" \
-		-net nic,model=virtio \
-		-net user,hostfwd=tcp::2222-:22 \
-		-nographic
+	./result/bin/run-*-vm
 
 # ─── Remote deploy to installed MBP ──────────────────────────────
 

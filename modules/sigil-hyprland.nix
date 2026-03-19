@@ -15,12 +15,12 @@
   # Fonts
   fonts.fontDir.enable = true;
   fonts.packages = with pkgs; [
-    ibm-plex
+    fira-code
     dejavu_fonts
     nerd-fonts.jetbrains-mono
   ];
   fonts.fontconfig.enable = true;
-  fonts.fontconfig.defaultFonts.monospace = [ "IBM Plex Mono" "DejaVu Sans Mono" ];
+  fonts.fontconfig.defaultFonts.monospace = [ "Fira Code" "DejaVu Sans Mono" ];
 
   # Ensure fontconfig cache directory exists for all users
   system.activationScripts.fontconfigCache = ''
@@ -113,8 +113,8 @@ HYPRCONF
     mkdir -p /home/nick/.config/foot
     cat > /home/nick/.config/foot/foot.ini << 'FOOTCONF'
 [main]
-font=IBM Plex Mono:size=13
-font-bold=IBM Plex Mono:weight=bold:size=13
+font=Fira Code:size=14
+font-bold=Fira Code:weight=bold:size=14
 
 [colors]
 background=0a0a0a
@@ -147,8 +147,8 @@ FOOTCONF
 
   environment.etc."waybar/style.css".text = ''
     * {
-      font-family: "IBM Plex Mono", monospace;
-      font-size: 12px;
+      font-family: "Fira Code", Consolas, 'Courier New', monospace;
+      font-size: 14px;
       color: #e5e5e5;
     }
     window#waybar {

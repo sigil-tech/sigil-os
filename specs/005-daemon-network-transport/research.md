@@ -1,0 +1,119 @@
+# Research: Daemon Network Transport
+
+## Issue 1 — Security model: which auth + encryption approach
+
+**Evaluated options**:
+
+| Approach | Encrypted | Hot Revocation | Setup UX | External Deps | Verdict |
+|----------|-----------|----------------|----------|---------------|---------|
+| mTLS (local CA) | Yes | Via CRL (complex) | ~15 min | None (stdlib) | Over-engineered |
+| TLS + bearer token | Yes | Trivial (remove from map) | ~2 min | None (stdlib) | **CHOSEN** |
+| TLS-PSK | Yes | Trivial | ~2 min | Required (stdlib can't do PSK) | Not viable |
+| WireGuard | Yes | Via peer removal | ~20 min | Kernel module | Overkill |
+
+**Decision**: TLS (server cert only, self-signed ECDSA P-256, TLS 1.3 minimum) + bearer token sent as the first JSON message after the TLS handshake.
+
+**Rationale**:
+- **Hot revocation**: Remove the token from an in-memory `map[string]*Credential` protected by `sync.RWMutex`. Write the updated set to disk. Zero daemon restarts. Takes effect on next connection attempt.
+- **MITM prevention**: Include the SHA-256 SPKI fingerprint of the server's public key in the credential file. The client uses `tls.Config.VerifyConnection` with `InsecureSkipVerify: true` to verify the fingerprint matches before proceeding. An attacker on the LAN cannot forge the cert without the daemon's private key.
+- **Zero Go external dependencies**: All operations use `crypto/tls`, `crypto/x509`, `crypto/ecdsa`, `crypto/elliptic`, `crypto/rand`, `crypto/sha256`, `encoding/base64`, `encoding/pem`, `encoding/json`.
+- **TLS 1.3 only**: Set `MinVersion: tls.VersionTLS13` on both sides. No legacy cipher negotiation surface.
+
+**Auth wire flow**:
+```
+[client]                            [daemon]
+   |── TLS ClientHello ──────────────→|
+   |←───────────────── ServerHello ──|
+   |    (TLS 1.3 handshake)           |
+   |    client verifies SPKI pin      |
+   |── {"method":"auth","payload":   →|  ← first line after handshake
+   |    {"token":"sghl_..."}}          |    daemon validates token
+   |←── {"ok":true,"payload":{...}} ──|  ← accepted or "{"ok":false,"error":"..."}"
+   |                                  |    connection closed on failure
+   |   normal JSON protocol proceeds  |
+```
+
+---
+
+## Issue 2 — Where does the new `network` package sit in the sigil DAG
+
+**Constraint**: The DAG must have no cycles. `socket` is documented as "pure protocol — no internal imports". Adding auth concerns to `socket` would pollute it.
+
+**Decision**: New `internal/network` package imports only `config` and stdlib. It exposes:
+- `NewAuthListener(inner net.Listener, store *CredentialStore) net.Listener` — wraps any `net.Listener`, performs auth on each accepted connection, returns authenticated `net.Conn` to callers.
+- `CredentialStore` — in-memory + file-backed token store.
+- `LoadOrGenerate(dir string) (tls.Certificate, error)` — cert management.
+
+The socket `Server` gets one new exported method: `ServeListener(ctx, net.Listener)` — runs the existing accept loop against a caller-provided listener. This keeps `socket` transport-agnostic.
+
+`cmd/sigild/main.go` wires it: creates TLS listener → wraps with `network.NewAuthListener` → calls `server.ServeListener`.
+
+**Updated DAG**:
+```
+event → config → store → inference → collector → notifier → analyzer → actuator → fleet → socket → cmd/*
+                    ↑
+                 network (imports config only)
+                    ↑
+                 cmd/sigild (imports network + socket)
+```
+
+`network` does NOT import `socket`. `cmd/sigild` imports both and connects them.
+
+---
+
+## Issue 3 — Rust client: transport abstraction for `daemon_client.rs`
+
+**Problem**: `daemon_client.rs` stores `Option<UnixStream>` directly. `do_call()` uses `try_clone()` to get a reader handle alongside the writer — this pattern **does not work for TLS streams** (TLS streams cannot be cloned).
+
+**Decision**: Introduce a `DaemonTransport` trait with `read` and `write` methods, and restructure `do_call()` to avoid `try_clone()` entirely.
+
+The refactored pattern: write the request to the stream, then read the response from the **same mutable reference** using `BufReader::new(&mut *stream)`. No cloning needed — write happens first, then the borrow is released, then read borrows mutably. Since the protocol is strictly request → response (no interleaving), this is safe and correct.
+
+```
+enum Transport {
+    Unix(UnixStream),
+    Tcp(tokio_rustls::client::TlsStream<TcpStream>),  // wrapped for sync use
+}
+```
+
+For the TCP case, `tokio-rustls` provides async TLS. Since `daemon_client.rs` is currently synchronous (uses `std::os::unix::net::UnixStream`), the TCP path uses `rustls` directly with `std::net::TcpStream` + `rustls::StreamOwned` — the synchronous, non-tokio API. This avoids async refactoring of `daemon_client.rs` and keeps the two transports behaviorally identical.
+
+**Credential loading**: The Rust client reads a JSON credential file (same format as generated by the daemon) from `$XDG_CONFIG_HOME/sigil-shell/daemon-credential.json` or a path specified in Tauri settings.
+
+**Fingerprint verification**: Implement `rustls::client::danger::ServerCertVerifier` to check that the server cert's SHA-256 hash (of the raw DER bytes) matches the `server_cert_spki` field from the credential file. The `sha2` crate is used for hashing (already transitive via other deps but declared explicitly for clarity).
+
+---
+
+## Issue 4 — sigild.nix module options
+
+**Decision**: Add `services.sigild.network` option group to `modules/sigild.nix`:
+
+```nix
+network = {
+  enable   = mkEnableOption "sigild TCP network listener";
+  bind     = mkOption { type = types.str;  default = "0.0.0.0"; };
+  port     = mkOption { type = types.port; default = 7773; };
+};
+```
+
+These are passed to sigild via the existing TOML config file that the NixOS module already generates. No new systemd units or firewall rules are added by default — the engineer is responsible for opening the port if needed (VM NAT or host-only networking typically doesn't require firewall changes).
+
+---
+
+## Issue 5 — Credential file format and transfer mechanism
+
+**Decision**: A single JSON file is generated by `sigilctl credential add <name>` and printed to stdout. The engineer copies it (scp, clipboard, shared folder) to the host machine.
+
+File contains:
+- `id`: human-readable name
+- `token`: `sghl_` prefix + 40 hex chars (160 bits of entropy)
+- `server_addr`: default address to connect to (set at generation time, can be overridden in sigil-shell settings)
+- `server_cert_spki`: `sha256:<base64>` SPKI fingerprint of the server's current TLS cert
+
+The `sghl_` prefix makes tokens easily recognizable in logs and config files, and allows grep-based secret scanning to flag accidental commits.
+
+---
+
+## No-change confirmation: `sigilctl` existing commands
+
+All existing `sigilctl` commands (status, events, suggestions, etc.) connect to the Unix socket and are unaffected. The new `credential` subcommand communicates with the daemon via the **Unix socket** (not the TCP listener) to add/list/revoke credentials — this means credential management is a local-only operation, which is correct.

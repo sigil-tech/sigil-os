@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Sigil
+Description=Sigil OS boot splash with pulsing logo
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/sigil
+ScriptFile=/usr/share/plymouth/themes/sigil/sigil.script

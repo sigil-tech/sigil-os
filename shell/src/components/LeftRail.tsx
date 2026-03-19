@@ -81,9 +81,16 @@ interface StatusData {
   inference_mode?: string
 }
 
+interface ConnectionStatus {
+  transport: 'unix' | 'tcp'
+  connected: boolean
+  remote_addr: string | null
+}
+
 export function LeftRail() {
   const { activeView, setActiveView } = useApp()
   const [daemonStatus, setDaemonStatus] = useState<StatusData | null>(null)
+  const [connStatus, setConnStatus] = useState<ConnectionStatus | null>(null)
 
   // Keyboard shortcuts Mod+1 through Mod+6, Ctrl+Shift+O for pop-out
   useEffect(() => {
@@ -119,9 +126,38 @@ export function LeftRail() {
     return () => clearInterval(id)
   }, [])
 
+  // Poll connection status every 5 seconds
+  useEffect(() => {
+    async function pollConn() {
+      try {
+        const resp = await invoke<ConnectionStatus>('get_connection_status')
+        setConnStatus(resp)
+      } catch {
+        setConnStatus(null)
+      }
+    }
+    pollConn()
+    const id = setInterval(pollConn, 5_000)
+    return () => clearInterval(id)
+  }, [])
+
   const connected = daemonStatus?.status === 'ok'
   const rssMb = daemonStatus?.rss_mb ?? 0
   const inferenceMode = daemonStatus?.inference_mode ?? 'local'
+
+  // Connection indicator: green=local connected, blue=remote connected, red=disconnected
+  const isRemote = connStatus?.transport === 'tcp'
+  const isConnected = connStatus?.connected ?? connected
+  const connDotClass = isConnected
+    ? isRemote
+      ? 'left-rail__dot left-rail__dot--remote'
+      : 'left-rail__dot left-rail__dot--ok'
+    : 'left-rail__dot left-rail__dot--err'
+  const connTooltip = isConnected
+    ? isRemote
+      ? `Connected (remote: ${connStatus?.remote_addr ?? 'tcp'})`
+      : 'Connected (local)'
+    : 'Disconnected'
 
   return (
     <nav class="left-rail" aria-label="Navigation">
@@ -154,10 +190,7 @@ export function LeftRail() {
       </button>
 
       <div class="left-rail__status">
-        <span
-          class={`left-rail__dot${connected ? ' left-rail__dot--ok' : ' left-rail__dot--err'}`}
-          title={connected ? 'Daemon connected' : 'Daemon disconnected'}
-        />
+        <span class={connDotClass} title={connTooltip} />
         <span class="left-rail__label" title="Inference mode">{inferenceMode}</span>
         <span class="left-rail__label" title="Memory usage">{rssMb}MB</span>
       </div>

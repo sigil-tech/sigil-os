@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import { invoke } from '@tauri-apps/api/core'
 import { emit } from '@tauri-apps/api/event'
 import { useApp } from '../context/AppContext'
+import { isLauncherMode } from '../lib/platform'
 
 const MAX_HISTORY = 1000
 
@@ -31,7 +32,8 @@ export function InputBar({ activePtyId }: { activePtyId?: string }) {
 
     if (inputMode === 'shell') {
       if (activePtyId) {
-        await invoke('pty_write', { ptyId: activePtyId, data: cmd + '\r' }).catch(() => {})
+        const writeCmd = await isLauncherMode() ? 'remote_pty_write' : 'pty_write'
+        await invoke(writeCmd, { ptyId: activePtyId, data: cmd + '\r' }).catch(() => {})
       }
       setHistory((h) => {
         const updated = [cmd, ...h.filter((x) => x !== cmd)].slice(0, MAX_HISTORY)

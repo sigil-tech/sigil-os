@@ -1,36 +1,101 @@
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-// Docker Engine API via Unix socket
-// Uses reqwest with a custom connector that speaks to /var/run/docker.sock
-// The URI host is ignored; all traffic goes to the socket.
+// ---------------------------------------------------------------------------
+// Linux: Docker container management via Unix socket
+// ---------------------------------------------------------------------------
 
+#[cfg(target_os = "linux")]
+use bytes::Bytes;
+#[cfg(target_os = "linux")]
+use http_body_util::{BodyExt, Empty, Full};
+#[cfg(target_os = "linux")]
+use hyper::{Method, Request};
+#[cfg(target_os = "linux")]
+use hyper::client::conn::http1;
+#[cfg(target_os = "linux")]
+use hyper_util::rt::TokioIo;
+#[cfg(target_os = "linux")]
+use tokio::net::UnixStream;
+
+#[cfg(target_os = "linux")]
 const DOCKER_SOCK: &str = "/var/run/docker.sock";
 
-fn docker_client() -> Result<Client, String> {
-    // reqwest 0.12 doesn't ship a built-in Unix socket connector.
-    // We use a plain http client with a base URL override; the actual
-    // transport is provided by a custom connector built from tokio's
-    // UnixStream.  For portability we keep this as a helper that
-    // creates a client with the unix socket transport.
-    // NOTE: reqwest does not directly support Unix sockets out of the box;
-    // this module uses hyper-util + tokio's UnixStream.
-    //
-    // For now we use a URL-rewrite approach: the client issues requests to
-    // http://localhost/ but we override the connector to route to the socket.
-    // We build a blocking reqwest client for simplicity.
-    Client::builder()
-        .build()
-        .map_err(|e| format!("build docker client: {e}"))
+#[cfg(target_os = "linux")]
+async fn docker_get(path: &str) -> Result<Bytes, String> {
+    let stream = UnixStream::connect(DOCKER_SOCK).await.map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound
+            || e.kind() == std::io::ErrorKind::ConnectionRefused
+        {
+            "Docker unavailable: socket not found".to_string()
+        } else {
+            format!("docker connect: {e}")
+        }
+    })?;
+    let io = TokioIo::new(stream);
+    let (mut sender, conn) = http1::handshake(io)
+        .await
+        .map_err(|e| format!("docker handshake: {e}"))?;
+    tokio::spawn(conn);
+
+    let req = Request::builder()
+        .method(Method::GET)
+        .uri(format!("http://localhost{path}"))
+        .header("Host", "localhost")
+        .body(Empty::<Bytes>::new())
+        .map_err(|e| format!("build request: {e}"))?;
+
+    let resp = sender
+        .send_request(req)
+        .await
+        .map_err(|e| format!("docker request: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("docker error: HTTP {}", resp.status()));
+    }
+
+    resp.into_body()
+        .collect()
+        .await
+        .map(|c| c.to_bytes())
+        .map_err(|e| format!("read body: {e}"))
 }
 
-// Docker uses a special URL scheme for Unix sockets.
-// reqwest 0.12 with the `unix-socket` feature supports:
-//   http+unix://<percent-encoded-socket-path>/<path>
-// We encode the socket path and build the URL accordingly.
-fn docker_url(path: &str) -> String {
-    let encoded = DOCKER_SOCK.replace('/', "%2F");
-    format!("http+unix://{encoded}{path}")
+#[cfg(target_os = "linux")]
+async fn docker_post(path: &str) -> Result<(), String> {
+    let stream = UnixStream::connect(DOCKER_SOCK).await.map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound
+            || e.kind() == std::io::ErrorKind::ConnectionRefused
+        {
+            "Docker unavailable: socket not found".to_string()
+        } else {
+            format!("docker connect: {e}")
+        }
+    })?;
+    let io = TokioIo::new(stream);
+    let (mut sender, conn) = http1::handshake(io)
+        .await
+        .map_err(|e| format!("docker handshake: {e}"))?;
+    tokio::spawn(conn);
+
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri(format!("http://localhost{path}"))
+        .header("Host", "localhost")
+        .header("Content-Length", "0")
+        .body(Full::<Bytes>::new(Bytes::new()))
+        .map_err(|e| format!("build request: {e}"))?;
+
+    let resp = sender
+        .send_request(req)
+        .await
+        .map_err(|e| format!("docker request: {e}"))?;
+
+    // 204 No Content is success for start/stop/restart; 304 Not Modified for already-running
+    if resp.status().is_success() || resp.status().as_u16() == 304 {
+        Ok(())
+    } else {
+        Err(format!("docker error: HTTP {}", resp.status()))
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -43,6 +108,7 @@ pub struct ContainerSummary {
     pub created: i64,
 }
 
+#[cfg(target_os = "linux")]
 #[derive(Debug, Deserialize)]
 struct DockerContainer {
     #[serde(rename = "Id")]
@@ -59,6 +125,7 @@ struct DockerContainer {
     created: i64,
 }
 
+#[cfg(target_os = "linux")]
 #[derive(Debug, Deserialize)]
 struct DockerPort {
     #[serde(rename = "PublicPort")]
@@ -69,46 +136,48 @@ struct DockerPort {
     port_type: Option<String>,
 }
 
+#[cfg(target_os = "linux")]
 fn format_ports(ports: &[DockerPort]) -> String {
     ports
         .iter()
         .filter_map(|p| {
             let priv_port = p.private_port?;
             if let Some(pub_port) = p.public_port {
-                Some(format!("{}:{}/{}", pub_port, priv_port, p.port_type.as_deref().unwrap_or("tcp")))
+                Some(format!(
+                    "{}:{}/{}",
+                    pub_port,
+                    priv_port,
+                    p.port_type.as_deref().unwrap_or("tcp")
+                ))
             } else {
-                Some(format!("{}/{}", priv_port, p.port_type.as_deref().unwrap_or("tcp")))
+                Some(format!(
+                    "{}/{}",
+                    priv_port,
+                    p.port_type.as_deref().unwrap_or("tcp")
+                ))
             }
         })
         .collect::<Vec<_>>()
         .join(", ")
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub async fn containers_list() -> Result<Vec<ContainerSummary>, String> {
-    let client = docker_client()?;
-    let resp = client
-        .get(docker_url("/containers/json?all=true"))
-        .send()
-        .await
-        .map_err(|e| {
-            if e.to_string().contains("No such file") || e.to_string().contains("Connection refused") {
-                "Docker unavailable: socket not found".to_string()
-            } else {
-                format!("docker list: {e}")
-            }
-        })?;
-
-    let containers: Vec<DockerContainer> = resp
-        .json()
-        .await
-        .map_err(|e| format!("parse containers: {e}"))?;
+    let body = docker_get("/containers/json?all=true").await?;
+    let containers: Vec<DockerContainer> =
+        serde_json::from_slice(&body).map_err(|e| format!("parse containers: {e}"))?;
 
     Ok(containers
         .into_iter()
         .map(|c| ContainerSummary {
             id: c.id[..12.min(c.id.len())].to_string(),
-            name: c.names.first().map(|n| n.trim_start_matches('/')).unwrap_or("").to_string(),
+            name: c
+                .names
+                .first()
+                .map(|n| n.trim_start_matches('/'))
+                .unwrap_or("")
+                .to_string(),
             image: c.image,
             status: c.status,
             ports: format_ports(&c.ports),
@@ -117,66 +186,80 @@ pub async fn containers_list() -> Result<Vec<ContainerSummary>, String> {
         .collect())
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub async fn container_start(id: String) -> Result<(), String> {
-    let client = docker_client()?;
-    client
-        .post(docker_url(&format!("/containers/{id}/start")))
-        .send()
-        .await
-        .map_err(|e| format!("container start: {e}"))?;
-    Ok(())
+    docker_post(&format!("/containers/{id}/start")).await
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub async fn container_stop(id: String) -> Result<(), String> {
-    let client = docker_client()?;
-    client
-        .post(docker_url(&format!("/containers/{id}/stop")))
-        .send()
-        .await
-        .map_err(|e| format!("container stop: {e}"))?;
-    Ok(())
+    docker_post(&format!("/containers/{id}/stop")).await
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub async fn container_restart(id: String) -> Result<(), String> {
-    let client = docker_client()?;
-    client
-        .post(docker_url(&format!("/containers/{id}/restart")))
-        .send()
-        .await
-        .map_err(|e| format!("container restart: {e}"))?;
-    Ok(())
+    docker_post(&format!("/containers/{id}/restart")).await
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub async fn container_logs(id: String, tail: u32) -> Result<String, String> {
-    let client = docker_client()?;
-    let resp = client
-        .get(docker_url(&format!(
-            "/containers/{id}/logs?stdout=true&stderr=true&tail={tail}"
-        )))
-        .send()
-        .await
-        .map_err(|e| format!("container logs: {e}"))?;
+    let body = docker_get(&format!(
+        "/containers/{id}/logs?stdout=true&stderr=true&tail={tail}"
+    ))
+    .await?;
 
-    let bytes = resp.bytes().await.map_err(|e| format!("read logs: {e}"))?;
-
-    // Docker multiplexed stream format: 8-byte header then data
-    // Strip the headers for plain text output
+    // Docker multiplexed stream: 8-byte header (stream type + size) then payload
     let mut output = String::new();
+    let data = body.as_ref();
     let mut i = 0;
-    let data = bytes.as_ref();
     while i + 8 <= data.len() {
-        let size = u32::from_be_bytes([data[i+4], data[i+5], data[i+6], data[i+7]]) as usize;
+        let size =
+            u32::from_be_bytes([data[i + 4], data[i + 5], data[i + 6], data[i + 7]]) as usize;
         i += 8;
         if i + size <= data.len() {
-            output.push_str(&String::from_utf8_lossy(&data[i..i+size]));
+            output.push_str(&String::from_utf8_lossy(&data[i..i + size]));
             i += size;
         } else {
             break;
         }
     }
     Ok(output)
+}
+
+// ---------------------------------------------------------------------------
+// Non-Linux stubs: Docker via Unix socket is not available
+// ---------------------------------------------------------------------------
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub async fn containers_list() -> Result<Vec<ContainerSummary>, String> {
+    Err("container management requires Docker via Unix socket (Linux only)".into())
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub async fn container_start(_id: String) -> Result<(), String> {
+    Err("container management requires Docker via Unix socket (Linux only)".into())
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub async fn container_stop(_id: String) -> Result<(), String> {
+    Err("container management requires Docker via Unix socket (Linux only)".into())
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub async fn container_restart(_id: String) -> Result<(), String> {
+    Err("container management requires Docker via Unix socket (Linux only)".into())
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub async fn container_logs(_id: String, _tail: u32) -> Result<String, String> {
+    Err("container management requires Docker via Unix socket (Linux only)".into())
 }

@@ -1,0 +1,26 @@
+# sigil.script — Sigil OS Plymouth boot splash
+#
+# Displays the Sigil logo centered on a dark background with a sine-wave
+# pulse animation (opacity 0.5–1.0, ~2 second cycle at 50 Hz).
+
+# Background: near-black matching the Sigil shell dark theme
+Window.SetBackgroundTopColor(0.05, 0.05, 0.05);
+Window.SetBackgroundBottomColor(0, 0, 0);
+
+# Load logo from ImageDir and center it on screen
+logo_image = Image("logo.png");
+logo_sprite = Sprite(logo_image);
+logo_sprite.SetX((Window.GetWidth()  / 2) - (logo_image.GetWidth()  / 2));
+logo_sprite.SetY((Window.GetHeight() / 2) - (logo_image.GetHeight() / 2));
+logo_sprite.SetZ(1);
+
+# Sine-wave pulse: opacity oscillates between 0.5 and 1.0 over ~2s at 50 Hz.
+# frame * 2π / 100 completes one full cycle every 100 ticks (~2 seconds).
+# 0.75 + 0.25 * sin maps [-1, 1] → [0.5, 1.0] — logo never fully disappears.
+frame = 0;
+fun refresh_callback () {
+    opacity = 0.75 + 0.25 * Math.Sin(frame * 2 * Math.Pi / 100);
+    logo_sprite.SetOpacity(opacity);
+    frame++;
+}
+Plymouth.SetRefreshFunction(refresh_callback);

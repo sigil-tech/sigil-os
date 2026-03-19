@@ -77,7 +77,7 @@ pub fn spawn_pty(
     rows: u16,
 ) -> Result<String, String> {
     let shell_bin = shell.unwrap_or_else(|| {
-        std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
+        std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string())
     });
     open_pty(&app, &state, &shell_bin, &[], cols, rows)
 }

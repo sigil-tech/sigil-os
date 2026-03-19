@@ -29,10 +29,9 @@ export function GitView() {
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [diff, setDiff] = useState('')
 
-  // Detect repo from cwd or default
+  // Detect repo from process cwd at launch time
   useEffect(() => {
-    const path = window.__TAURI_INTERNALS__?.metadata?.currentDir ?? '/home'
-    setRepoPath(path)
+    invoke<string>('get_cwd').then(setRepoPath).catch(() => setRepoPath('/home'))
   }, [])
 
   useEffect(() => {
@@ -101,15 +100,4 @@ export function GitView() {
       </div>
     </div>
   )
-}
-
-// Augment window type for Tauri internals
-declare global {
-  interface Window {
-    __TAURI_INTERNALS__?: {
-      metadata?: {
-        currentDir?: string
-      }
-    }
-  }
 }

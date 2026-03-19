@@ -9,8 +9,8 @@
   services.sigild = {
     enable = true;
     logLevel = "debug";
-    watchDirs = [ "/home/engineer/workspace" ];
-    repoDirs = [ "/home/engineer/workspace" ];
+    watchDirs = [ "~/workspace" ];
+    repoDirs = [ "~/workspace" ];
     inference = {
       mode = "remote";
       local.enable = false;
@@ -20,9 +20,15 @@
         apiKeyFile = "/etc/sigil/cloud-api-key.env";
       };
     };
+    network = {
+      enable = true;
+      bind = "0.0.0.0";
+      port = 7773;
+    };
   };
 
   services.sigil-shell.enable = true;
+  services.sigil-plymouth.enable = true;
   services.sigil-inference.enable = true;
 
   # Auto-create workspace and Tauri data directories
