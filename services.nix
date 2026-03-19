@@ -28,6 +28,7 @@
   };
 
   services.sigil-shell.enable = true;
+  services.sigil-plymouth.enable = true;
   services.sigil-inference.enable = true;
 
   # Auto-create workspace and Tauri data directories

@@ -21,7 +21,9 @@
 
   # Kernel modules (from nixos-generate-config)
   boot.initrd.availableKernelModules = [ "xhci_pci" "nvme" ];
-  boot.initrd.kernelModules = [];
+  # i915 loaded early so Plymouth gets a full-resolution KMS framebuffer
+  # from its first frame rather than falling back to the EFI GOP resolution.
+  boot.initrd.kernelModules = [ "i915" ];
   boot.kernelModules = [ "kvm-intel" ];
   boot.extraModulePackages = [];
 
@@ -48,8 +50,14 @@
   networking.networkmanager.enable = true;
   networking.useDHCP = lib.mkDefault true;
 
-  # Keyboard — remap Fn keys, enable function keys by default
-  boot.kernelParams = [ "hid_apple.fnmode=2" ];
+  # Keyboard — remap Fn keys, enable function keys by default.
+  # quiet + udev/systemd log suppression hide boot text behind the Plymouth splash.
+  boot.kernelParams = [
+    "hid_apple.fnmode=2"
+    "quiet"
+    "udev.log_level=3"
+    "systemd.show_status=auto"
+  ];
 
   # Power management
   powerManagement.cpuFreqGovernor = "powersave";

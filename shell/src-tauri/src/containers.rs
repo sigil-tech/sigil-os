@@ -1,13 +1,26 @@
-use bytes::Bytes;
-use http_body_util::{BodyExt, Empty, Full};
-use hyper::{Method, Request};
-use hyper::client::conn::http1;
-use hyper_util::rt::TokioIo;
 use serde::{Deserialize, Serialize};
+
+// ---------------------------------------------------------------------------
+// Linux: Docker container management via Unix socket
+// ---------------------------------------------------------------------------
+
+#[cfg(target_os = "linux")]
+use bytes::Bytes;
+#[cfg(target_os = "linux")]
+use http_body_util::{BodyExt, Empty, Full};
+#[cfg(target_os = "linux")]
+use hyper::{Method, Request};
+#[cfg(target_os = "linux")]
+use hyper::client::conn::http1;
+#[cfg(target_os = "linux")]
+use hyper_util::rt::TokioIo;
+#[cfg(target_os = "linux")]
 use tokio::net::UnixStream;
 
+#[cfg(target_os = "linux")]
 const DOCKER_SOCK: &str = "/var/run/docker.sock";
 
+#[cfg(target_os = "linux")]
 async fn docker_get(path: &str) -> Result<Bytes, String> {
     let stream = UnixStream::connect(DOCKER_SOCK).await.map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound
@@ -47,6 +60,7 @@ async fn docker_get(path: &str) -> Result<Bytes, String> {
         .map_err(|e| format!("read body: {e}"))
 }
 
+#[cfg(target_os = "linux")]
 async fn docker_post(path: &str) -> Result<(), String> {
     let stream = UnixStream::connect(DOCKER_SOCK).await.map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound
@@ -94,6 +108,7 @@ pub struct ContainerSummary {
     pub created: i64,
 }
 
+#[cfg(target_os = "linux")]
 #[derive(Debug, Deserialize)]
 struct DockerContainer {
     #[serde(rename = "Id")]
@@ -110,6 +125,7 @@ struct DockerContainer {
     created: i64,
 }
 
+#[cfg(target_os = "linux")]
 #[derive(Debug, Deserialize)]
 struct DockerPort {
     #[serde(rename = "PublicPort")]
@@ -120,6 +136,7 @@ struct DockerPort {
     port_type: Option<String>,
 }
 
+#[cfg(target_os = "linux")]
 fn format_ports(ports: &[DockerPort]) -> String {
     ports
         .iter()
@@ -144,6 +161,7 @@ fn format_ports(ports: &[DockerPort]) -> String {
         .join(", ")
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub async fn containers_list() -> Result<Vec<ContainerSummary>, String> {
     let body = docker_get("/containers/json?all=true").await?;
@@ -168,21 +186,25 @@ pub async fn containers_list() -> Result<Vec<ContainerSummary>, String> {
         .collect())
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub async fn container_start(id: String) -> Result<(), String> {
     docker_post(&format!("/containers/{id}/start")).await
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub async fn container_stop(id: String) -> Result<(), String> {
     docker_post(&format!("/containers/{id}/stop")).await
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub async fn container_restart(id: String) -> Result<(), String> {
     docker_post(&format!("/containers/{id}/restart")).await
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub async fn container_logs(id: String, tail: u32) -> Result<String, String> {
     let body = docker_get(&format!(
@@ -206,4 +228,38 @@ pub async fn container_logs(id: String, tail: u32) -> Result<String, String> {
         }
     }
     Ok(output)
+}
+
+// ---------------------------------------------------------------------------
+// Non-Linux stubs: Docker via Unix socket is not available
+// ---------------------------------------------------------------------------
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub async fn containers_list() -> Result<Vec<ContainerSummary>, String> {
+    Err("container management requires Docker via Unix socket (Linux only)".into())
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub async fn container_start(_id: String) -> Result<(), String> {
+    Err("container management requires Docker via Unix socket (Linux only)".into())
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub async fn container_stop(_id: String) -> Result<(), String> {
+    Err("container management requires Docker via Unix socket (Linux only)".into())
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub async fn container_restart(_id: String) -> Result<(), String> {
+    Err("container management requires Docker via Unix socket (Linux only)".into())
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub async fn container_logs(_id: String, _tail: u32) -> Result<String, String> {
+    Err("container management requires Docker via Unix socket (Linux only)".into())
 }

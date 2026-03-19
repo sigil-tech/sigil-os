@@ -16,16 +16,25 @@ portable-pty = "0.8"
 uuid = { version = "1", features = ["v4"] }
 git2 = { version = "0.20", default-features = false }
 reqwest = { version = "0.12", features = ["json"] }
-hyper = { version = "1", features = ["http1", "client"] }
-hyper-util = { version = "0.1", features = ["tokio"] }
-http-body-util = "0.1"
-bytes = "1"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 rustls-pemfile = "2"
 sha2 = "0.10"
 libc = "0.2"
+
+# Linux-only: GTK browser overlay + Docker via Unix socket
+[target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
 webkit2gtk = "2.0"
+hyper = { version = "1", features = ["http1", "client"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+
+# macOS: SSH-based remote PTY for VM terminal access
+[target.'cfg(target_os = "macos")'.dependencies]
+russh = "0.46"
+russh-keys = "0.46"
+async-trait = "0.1"
 
 [profile.release]
 panic = "abort"

@@ -1,11 +1,26 @@
+#[cfg(target_os = "linux")]
 use std::sync::{Arc, Mutex};
+#[cfg(target_os = "linux")]
 use tauri::{Emitter, Manager, WebviewUrl};
 
+// ---------------------------------------------------------------------------
+// Linux: real browser overlay using GTK + WebKitGTK
+// ---------------------------------------------------------------------------
+
+#[cfg(target_os = "linux")]
 pub struct BrowserState(pub Arc<Mutex<Option<tauri::Webview<tauri::Wry>>>>);
+
+#[cfg(target_os = "linux")]
+impl BrowserState {
+    pub fn new() -> Self {
+        Self(Arc::new(Mutex::new(None)))
+    }
+}
 
 /// Walk up from a WebKitWebView to find the direct child of a GtkOverlay.
 /// After reparenting, the overlay child is the widget we need to set
 /// margins/size on (it may be a wrapper around the raw webview).
+#[cfg(target_os = "linux")]
 fn find_overlay_child(widget: &gtk::Widget) -> Option<gtk::Widget> {
     use gtk::prelude::*;
     let mut child = widget.clone();
@@ -18,12 +33,7 @@ fn find_overlay_child(widget: &gtk::Widget) -> Option<gtk::Widget> {
     None
 }
 
-impl BrowserState {
-    pub fn new() -> Self {
-        Self(Arc::new(Mutex::new(None)))
-    }
-}
-
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub fn browser_create(
     url: String,
@@ -157,6 +167,7 @@ pub fn browser_create(
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub fn browser_navigate(
     url: String,
@@ -168,6 +179,7 @@ pub fn browser_navigate(
     webview.navigate(parsed).map_err(|e| e.to_string())
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub fn browser_back(state: tauri::State<'_, BrowserState>) -> Result<(), String> {
     let guard = state.0.lock().map_err(|e| e.to_string())?;
@@ -175,6 +187,7 @@ pub fn browser_back(state: tauri::State<'_, BrowserState>) -> Result<(), String>
     webview.eval("history.back()").map_err(|e| e.to_string())
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub fn browser_forward(state: tauri::State<'_, BrowserState>) -> Result<(), String> {
     let guard = state.0.lock().map_err(|e| e.to_string())?;
@@ -184,6 +197,7 @@ pub fn browser_forward(state: tauri::State<'_, BrowserState>) -> Result<(), Stri
         .map_err(|e| e.to_string())
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub fn browser_reload(state: tauri::State<'_, BrowserState>) -> Result<(), String> {
     let guard = state.0.lock().map_err(|e| e.to_string())?;
@@ -191,6 +205,7 @@ pub fn browser_reload(state: tauri::State<'_, BrowserState>) -> Result<(), Strin
     webview.reload().map_err(|e| e.to_string())
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub fn browser_show(
     x: f64,
@@ -214,6 +229,7 @@ pub fn browser_show(
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub fn browser_hide(state: tauri::State<'_, BrowserState>) -> Result<(), String> {
     let guard = state.0.lock().map_err(|e| e.to_string())?;
@@ -227,10 +243,90 @@ pub fn browser_hide(state: tauri::State<'_, BrowserState>) -> Result<(), String>
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 pub fn browser_get_url(state: tauri::State<'_, BrowserState>) -> Result<String, String> {
     let guard = state.0.lock().map_err(|e| e.to_string())?;
     let webview = guard.as_ref().ok_or("browser not created")?;
     let current = webview.url().map_err(|e| e.to_string())?;
     Ok(current.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Non-Linux stubs: browser overlay is not available without GTK/WebKitGTK
+// ---------------------------------------------------------------------------
+
+#[cfg(not(target_os = "linux"))]
+pub struct BrowserState;
+
+#[cfg(not(target_os = "linux"))]
+impl BrowserState {
+    pub fn new() -> Self {
+        BrowserState
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub fn browser_create(
+    _url: String,
+    _x: f64,
+    _y: f64,
+    _width: f64,
+    _height: f64,
+    _window: tauri::Window,
+    _state: tauri::State<'_, BrowserState>,
+) -> Result<(), String> {
+    Err("browser overlay requires GTK/WebKitGTK (Linux only)".into())
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub fn browser_navigate(
+    _url: String,
+    _state: tauri::State<'_, BrowserState>,
+) -> Result<(), String> {
+    Err("browser overlay requires GTK/WebKitGTK (Linux only)".into())
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub fn browser_back(_state: tauri::State<'_, BrowserState>) -> Result<(), String> {
+    Err("browser overlay requires GTK/WebKitGTK (Linux only)".into())
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub fn browser_forward(_state: tauri::State<'_, BrowserState>) -> Result<(), String> {
+    Err("browser overlay requires GTK/WebKitGTK (Linux only)".into())
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub fn browser_reload(_state: tauri::State<'_, BrowserState>) -> Result<(), String> {
+    Err("browser overlay requires GTK/WebKitGTK (Linux only)".into())
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub fn browser_show(
+    _x: f64,
+    _y: f64,
+    _width: f64,
+    _height: f64,
+    _state: tauri::State<'_, BrowserState>,
+) -> Result<(), String> {
+    Err("browser overlay requires GTK/WebKitGTK (Linux only)".into())
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub fn browser_hide(_state: tauri::State<'_, BrowserState>) -> Result<(), String> {
+    Err("browser overlay requires GTK/WebKitGTK (Linux only)".into())
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+pub fn browser_get_url(_state: tauri::State<'_, BrowserState>) -> Result<String, String> {
+    Err("browser overlay requires GTK/WebKitGTK (Linux only)".into())
 }

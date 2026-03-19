@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { isLauncherMode } from '../lib/platform'
 import '@xterm/xterm/css/xterm.css'
 
 interface Props {
@@ -14,6 +15,7 @@ export function TerminalView({ onPtyReady }: Props) {
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const ptyIdRef = useRef<string | null>(null)
+  const launcherRef = useRef<boolean>(false)
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
@@ -40,25 +42,31 @@ export function TerminalView({ onPtyReady }: Props) {
     termRef.current = term
     fitRef.current = fitAddon
 
-    // Spawn PTY
-    invoke<string>('spawn_pty', {
-      shell: null,
-      cols: term.cols,
-      rows: term.rows,
+    // Detect platform and spawn the appropriate PTY type
+    isLauncherMode().then((launcher) => {
+      launcherRef.current = launcher
+
+      const spawnCmd = launcher ? 'spawn_remote_pty' : 'spawn_pty'
+      const spawnArgs = launcher
+        ? { config: null, cols: term.cols, rows: term.rows }
+        : { shell: null, cols: term.cols, rows: term.rows }
+
+      return invoke<string>(spawnCmd, spawnArgs)
     })
       .then((ptyId) => {
         ptyIdRef.current = ptyId
         onPtyReady?.(ptyId)
         setReady(true)
 
-        // Stream PTY output into xterm
+        // Stream PTY output into xterm (same event pattern for both local and remote)
         listen<string>(`pty-output-${ptyId}`, (event) => {
           term.write(event.payload)
         })
 
         // Forward xterm input to PTY
         term.onData((data) => {
-          invoke('pty_write', { ptyId, data }).catch(() => {})
+          const writeCmd = launcherRef.current ? 'remote_pty_write' : 'pty_write'
+          invoke(writeCmd, { ptyId, data }).catch(() => {})
         })
       })
       .catch((err) => {
@@ -78,7 +86,8 @@ export function TerminalView({ onPtyReady }: Props) {
       fitRef.current.fit()
       const term = termRef.current
       if (!term) return
-      invoke('pty_resize', {
+      const resizeCmd = launcherRef.current ? 'remote_pty_resize' : 'pty_resize'
+      invoke(resizeCmd, {
         ptyId: ptyIdRef.current,
         cols: term.cols,
         rows: term.rows,

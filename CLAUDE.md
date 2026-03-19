@@ -9,6 +9,8 @@ Auto-generated from all feature plans. Last updated: 2026-03-14
 - TypeScript 5.7 (Preact + Vite frontend), Rust 2021 edition (Tauri 2.x backend) + Tauri 2.x, xterm.js + FitAddon, portable-pty, git2 0.20, reqwest 0.12, Preact 10.x (004-shell-views-impl)
 - Go 1.24 (daemon), Rust 2021 / Tauri 2.x (sigil-shell) (005-daemon-network-transport)
 - Credential store — JSON file at `$XDG_DATA_HOME/sigil/credentials.json`; TLS cert/key at `$XDG_DATA_HOME/sigil/server-{cert,key}.pem` (005-daemon-network-transport)
+- Nix (module + derivation), Plymouth script language (theme animation) + Plymouth (NixOS `boot.plymouth` module), `stdenvNoCC` (Nix packaging), `boot.initrd.systemd` (systemd initrd) (006-plymouth-boot-splash)
+- N/A — theme files in Nix store, no runtime persistence (006-plymouth-boot-splash)
 
 - TypeScript 5.x (frontend, Preact + Vite), Rust 1.75+ (Tauri 2.x backend), Go 1.24 (sigild daemon) + Tauri 2.x, Preact, xterm.js, portable-pty, git2, reqwest, tokio, marked (markdown), serde/serde_json (001-sigil-shell-v0)
 
@@ -28,9 +30,9 @@ cargo test [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECH
 TypeScript 5.x (frontend, Preact + Vite), Rust 1.75+ (Tauri 2.x backend), Go 1.24 (sigild daemon): Follow standard conventions
 
 ## Recent Changes
+- 006-plymouth-boot-splash: Added Nix (module + derivation), Plymouth script language (theme animation) + Plymouth (NixOS `boot.plymouth` module), `stdenvNoCC` (Nix packaging), `boot.initrd.systemd` (systemd initrd)
 - 005-daemon-network-transport: Added Go 1.24 (daemon), Rust 2021 / Tauri 2.x (sigil-shell)
 - 004-shell-views-impl: Added TypeScript 5.7 (Preact + Vite frontend), Rust 2021 edition (Tauri 2.x backend) + Tauri 2.x, xterm.js + FitAddon, portable-pty, git2 0.20, reqwest 0.12, Preact 10.x
-- 003-shell-font-update: Added TypeScript 5.7 (frontend, Preact + Vite), Rust 2021 edition (Tauri 2.x backend), Nix (NixOS modules) + Preact, xterm.js, Tauri 2.x, fontconfig, foot terminal, Waybar
 
 
 <!-- MANUAL ADDITIONS START -->

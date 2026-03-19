@@ -9,6 +9,8 @@ mod editor;
 mod git;
 mod hyprland;
 mod pty;
+#[cfg(target_os = "macos")]
+mod remote_pty;
 mod settings;
 
 use browser::BrowserState;
@@ -74,10 +76,18 @@ fn main() {
     };
     let tcp_addr_override = daemon_settings.tcp_addr_override.clone();
 
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .manage(client)
         .manage(pty_map)
-        .manage(BrowserState::new())
+        .manage(BrowserState::new());
+
+    // macOS-only: register remote PTY state
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.manage(remote_pty::RemotePtyMap::new());
+    }
+
+    let mut app_builder = builder
         .setup(move |app| {
             if let Some(css) = theme_css {
                 let windows: std::collections::HashMap<String, tauri::WebviewWindow> = app.webview_windows();
@@ -105,8 +115,13 @@ fn main() {
             );
 
             Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
+        });
+
+    // Register invoke handlers — platform-gated commands use stubs on
+    // unsupported platforms so the handler list is unconditional.
+    #[cfg(not(target_os = "macos"))]
+    {
+        app_builder = app_builder.invoke_handler(tauri::generate_handler![
             // Daemon client
             daemon_client::get_connection_status,
             daemon_client::daemon_status,
@@ -129,7 +144,7 @@ fn main() {
             daemon_client::daemon_fleet_policy,
             // CWD
             cwd::get_cwd,
-            // PTY
+            // PTY (local)
             pty::spawn_pty,
             pty::pty_write,
             pty::pty_resize,
@@ -157,7 +172,70 @@ fn main() {
             browser::browser_show,
             browser::browser_hide,
             browser::browser_get_url,
-        ])
+        ]);
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        app_builder = app_builder.invoke_handler(tauri::generate_handler![
+            // Daemon client
+            daemon_client::get_connection_status,
+            daemon_client::daemon_status,
+            daemon_client::daemon_events,
+            daemon_client::daemon_suggestions,
+            daemon_client::daemon_files,
+            daemon_client::daemon_commands,
+            daemon_client::daemon_patterns,
+            daemon_client::daemon_trigger_summary,
+            daemon_client::daemon_feedback,
+            daemon_client::daemon_purge,
+            daemon_client::daemon_ai_query,
+            daemon_client::daemon_view_changed,
+            daemon_client::daemon_undo,
+            daemon_client::daemon_fleet_preview,
+            daemon_client::daemon_fleet_opt_out,
+            daemon_client::daemon_config,
+            daemon_client::daemon_sessions,
+            daemon_client::daemon_actions,
+            daemon_client::daemon_fleet_policy,
+            // CWD
+            cwd::get_cwd,
+            // PTY (local)
+            pty::spawn_pty,
+            pty::pty_write,
+            pty::pty_resize,
+            // Editor
+            editor::spawn_editor,
+            // Git
+            git::git_log,
+            git::git_status,
+            git::git_diff,
+            git::git_branch,
+            // Hyprland (stub on macOS)
+            hyprland::pop_out_tool,
+            // Containers (stub on macOS)
+            containers::containers_list,
+            containers::container_start,
+            containers::container_stop,
+            containers::container_restart,
+            containers::container_logs,
+            // Browser (stub on macOS)
+            browser::browser_create,
+            browser::browser_navigate,
+            browser::browser_back,
+            browser::browser_forward,
+            browser::browser_reload,
+            browser::browser_show,
+            browser::browser_hide,
+            browser::browser_get_url,
+            // Remote PTY (macOS only — SSH to VM)
+            remote_pty::spawn_remote_pty,
+            remote_pty::remote_pty_write,
+            remote_pty::remote_pty_resize,
+        ]);
+    }
+
+    app_builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -13,8 +13,18 @@
     system = "x86_64-linux";
     pkgs = nixpkgs.legacyPackages.${system};
 
-    # Build sigild + sigilctl from local source
+    # Build sigild + sigilctl from local source (x86_64)
     sigild = pkgs.buildGoModule {
+      pname = "sigild";
+      version = "0.1.0-dev";
+      src = sigil-src;
+      subPackages = [ "cmd/sigild" "cmd/sigilctl" ];
+      vendorHash = null;
+    };
+
+    # Build sigild + sigilctl for aarch64-linux (Apple Silicon VMs)
+    aarch64Pkgs = nixpkgs.legacyPackages.aarch64-linux;
+    sigild-aarch64 = aarch64Pkgs.buildGoModule {
       pname = "sigild";
       version = "0.1.0-dev";
       src = sigil-src;
@@ -76,18 +86,37 @@
       };
     };
 
-    # Shared module list — the core Sigil OS stack
+    # Shared module list — the core Sigil OS stack (full desktop)
     coreModules = [
       ./modules/sigil-base.nix
       ./modules/sigil-hyprland.nix
       ./modules/sigild.nix
       ./modules/sigil-shell.nix
       ./modules/sigil-inference.nix
+      # Plymouth splash — enabled per-config via services.sigil-plymouth.enable.
+      # Intentionally absent from sigil-vm so VM boots show console output.
+      ./modules/sigil-plymouth.nix
+    ];
+
+    # Launcher modules — headless VM for Apple Virtualization Framework
+    launcherModules = [
+      ./modules/sigil-base.nix
+      ./modules/sigild.nix
+      ./modules/sigil-inference.nix
+      ./hardware/apple-vf.nix
     ];
   in {
     packages.${system} = {
       inherit sigild sigil-shell;
       default = sigild;
+    };
+
+    # aarch64-linux packages — launcher VM artifacts
+    packages.aarch64-linux = {
+      sigild = sigild-aarch64;
+      launcher-kernel = self.nixosConfigurations.sigil-launcher.config.boot.kernelPackages.kernel;
+      launcher-initrd = self.nixosConfigurations.sigil-launcher.config.system.build.initialRamdisk;
+      launcher-toplevel = self.nixosConfigurations.sigil-launcher.config.system.build.toplevel;
     };
 
     # Installed NixOS on 2017 MacBook Pro
@@ -142,6 +171,34 @@
               chown "$user:users" "$u/workspace"
             done
           '';
+        }
+      ];
+    };
+
+    # Launcher VM image for macOS — headless aarch64-linux NixOS guest
+    # Runs in Apple Virtualization Framework via the native Swift launcher app.
+    nixosConfigurations.sigil-launcher = nixpkgs.lib.nixosSystem {
+      system = "aarch64-linux";
+      specialArgs = { sigild = sigild-aarch64; };
+      modules = launcherModules ++ [
+        {
+          # Disable default nick/engineer users — apple-vf.nix defines the sigil user
+          sigil.users.enable = false;
+
+          services.sigild = {
+            enable = true;
+            logLevel = "debug";
+            watchDirs = [ "/workspace" ];
+            repoDirs = [ "/workspace" ];
+            dbPath = "/sigil-profile/data.db";
+            network = {
+              enable = true;
+              bind = "0.0.0.0";
+              port = 7773;
+            };
+          };
+
+          services.sigil-inference.enable = true;
         }
       ];
     };

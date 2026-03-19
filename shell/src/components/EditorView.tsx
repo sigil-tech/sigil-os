@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { isLauncherMode } from '../lib/platform'
 import '@xterm/xterm/css/xterm.css'
 
 interface Props {
@@ -14,6 +15,7 @@ export function EditorView({ filePath }: Props) {
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const ptyIdRef = useRef<string | null>(null)
+  const launcherRef = useRef<boolean>(false)
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
@@ -40,8 +42,27 @@ export function EditorView({ filePath }: Props) {
     termRef.current = term
     fitRef.current = fitAddon
 
-    invoke<string>('spawn_editor', {
-      filePath: filePath ?? null,
+    isLauncherMode().then((launcher) => {
+      launcherRef.current = launcher
+
+      if (launcher) {
+        // In launcher mode: spawn a remote shell, then launch nvim inside it
+        return invoke<string>('spawn_remote_pty', {
+          config: null,
+          cols: term.cols,
+          rows: term.rows,
+        }).then((ptyId) => {
+          // Send nvim command to the remote shell
+          const nvimCmd = filePath ? `nvim ${filePath}\n` : `nvim\n`
+          invoke('remote_pty_write', { ptyId, data: nvimCmd }).catch(() => {})
+          return ptyId
+        })
+      } else {
+        // Native mode: spawn nvim directly via local PTY
+        return invoke<string>('spawn_editor', {
+          filePath: filePath ?? null,
+        })
+      }
     })
       .then((ptyId) => {
         ptyIdRef.current = ptyId
@@ -52,7 +73,8 @@ export function EditorView({ filePath }: Props) {
         })
 
         term.onData((data) => {
-          invoke('pty_write', { ptyId, data }).catch(() => {})
+          const writeCmd = launcherRef.current ? 'remote_pty_write' : 'pty_write'
+          invoke(writeCmd, { ptyId, data }).catch(() => {})
         })
       })
       .catch((err) => {
@@ -71,7 +93,8 @@ export function EditorView({ filePath }: Props) {
       fitRef.current.fit()
       const term = termRef.current
       if (!term) return
-      invoke('pty_resize', {
+      const resizeCmd = launcherRef.current ? 'remote_pty_resize' : 'pty_resize'
+      invoke(resizeCmd, {
         ptyId: ptyIdRef.current,
         cols: term.cols,
         rows: term.rows,

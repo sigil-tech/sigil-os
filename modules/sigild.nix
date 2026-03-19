@@ -100,6 +100,12 @@ in {
         description = "TCP port for the network listener";
       };
     };
+
+    dbPath = mkOption {
+      type = types.str;
+      default = "";
+      description = "Override database path (empty = sigild default)";
+    };
   };
 
   config = mkIf cfg.enable {
@@ -112,6 +118,7 @@ in {
       log_level = "${cfg.logLevel}"
       watch_dirs = [${concatMapStringsSep ", " (d: ''"${d}"'') cfg.watchDirs}]
       repo_dirs = [${concatMapStringsSep ", " (d: ''"${d}"'') cfg.repoDirs}]
+      ${lib.optionalString (cfg.dbPath != "") ''db_path = "${cfg.dbPath}"''}
 
       [inference]
       mode = "${cfg.inference.mode}"
@@ -174,6 +181,9 @@ in {
           "%h/.config/sigil"
           "%h/.cache/sigil"
           "%t"  # XDG_RUNTIME_DIR — needed for sigild.sock
+        ] ++ lib.optionals (cfg.dbPath != "") [
+          "/sigil-profile"  # launcher mode: virtio-fs mounted profile dir
+          "/workspace"      # launcher mode: virtio-fs mounted workspace
         ];
         NoNewPrivileges = true;
         PrivateTmp = true;
