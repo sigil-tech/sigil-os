@@ -105,10 +105,19 @@
       ./modules/sigil-inference.nix
       ./hardware/apple-vf.nix
     ];
+
+    # Launcher modules — headless VM for Hyper-V (Windows)
+    launcherWindowsModules = [
+      ./modules/sigil-base.nix
+      ./modules/sigild.nix
+      ./modules/sigil-inference.nix
+      ./hardware/hyper-v.nix
+    ];
   in {
     packages.${system} = {
       inherit sigild sigil-shell;
       default = sigild;
+      launcher-windows-toplevel = self.nixosConfigurations.sigil-launcher-windows.config.system.build.toplevel;
     };
 
     # aarch64-linux packages — launcher VM artifacts
@@ -183,6 +192,33 @@
       modules = launcherModules ++ [
         {
           # Disable default nick/engineer users — apple-vf.nix defines the sigil user
+          sigil.users.enable = false;
+
+          services.sigild = {
+            enable = true;
+            logLevel = "debug";
+            watchDirs = [ "/workspace" ];
+            repoDirs = [ "/workspace" ];
+            dbPath = "/sigil-profile/data.db";
+            network = {
+              enable = true;
+              bind = "0.0.0.0";
+              port = 7773;
+            };
+          };
+
+          services.sigil-inference.enable = true;
+        }
+      ];
+    };
+
+    # Launcher VM image for Windows — headless x86_64-linux NixOS guest
+    # Runs in Hyper-V via the native C# / WinUI 3 launcher app.
+    nixosConfigurations.sigil-launcher-windows = nixpkgs.lib.nixosSystem {
+      inherit system; # x86_64-linux
+      specialArgs = { inherit sigild; };
+      modules = launcherWindowsModules ++ [
+        {
           sigil.users.enable = false;
 
           services.sigild = {
