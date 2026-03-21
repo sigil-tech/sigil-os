@@ -8,10 +8,12 @@ import { BrowserView } from './BrowserView'
 import { GitView } from './GitView'
 import { ContainerView } from './ContainerView'
 import { InsightsView } from './InsightsView'
+import { progressiveReveal } from '../lib/progressive-reveal'
 
 interface AIResponse {
   response: string
   routing: 'local' | 'cloud'
+  latency_ms?: number
 }
 
 interface ActuationPayload {
@@ -52,7 +54,24 @@ function ViewForId({ viewId, onPtyReady }: { viewId: ViewId; onPtyReady?: (id: s
 export function ContentPane({ onTerminalPtyReady }: Props) {
   const { activeView, split, setSplit } = useApp()
   const [aiOverlay, setAiOverlay] = useState<AIResponse | null>(null)
+  const [revealedHtml, setRevealedHtml] = useState('')
+  const cancelRevealRef = useRef<(() => void) | null>(null)
   const paneRef = useRef<HTMLDivElement>(null)
+
+  // Progressive reveal of AI responses
+  useEffect(() => {
+    if (cancelRevealRef.current) {
+      cancelRevealRef.current()
+      cancelRevealRef.current = null
+    }
+    if (aiOverlay) {
+      setRevealedHtml('')
+      const cancel = progressiveReveal(aiOverlay.response, (partial) => {
+        setRevealedHtml(partial)
+      })
+      cancelRevealRef.current = cancel
+    }
+  }, [aiOverlay])
 
   // Keyboard shortcuts for split mode
   useEffect(() => {
@@ -62,13 +81,13 @@ export function ContentPane({ onTerminalPtyReady }: Props) {
         if (e.shiftKey) {
           // Ctrl+Shift+\ → toggle vertical split
           setSplit(split.mode === 'vertical'
-            ? { ...split, mode: 'none' }
-            : { ...split, mode: 'vertical' })
+            ? { ...split, mode: 'none', initiator: 'user' }
+            : { ...split, mode: 'vertical', initiator: 'user' })
         } else {
           // Ctrl+\ → toggle horizontal split
           setSplit(split.mode === 'horizontal'
-            ? { ...split, mode: 'none' }
-            : { ...split, mode: 'horizontal' })
+            ? { ...split, mode: 'none', initiator: 'user' }
+            : { ...split, mode: 'horizontal', initiator: 'user' })
         }
       }
       if (e.ctrlKey && e.key === '[') {
@@ -101,14 +120,27 @@ export function ContentPane({ onTerminalPtyReady }: Props) {
     let unlisten: (() => void) | undefined
     listen<ActuationPayload>('daemon-actuation', (event) => {
       const p = event.payload
-      if (p.type === 'split-pane') {
-        setSplit({ mode: 'horizontal', primaryView: split.primaryView, secondaryView: 'terminal', focus: 'primary' })
-      } else if (p.type === 'close-split') {
-        setSplit({ ...split, mode: 'none' })
+      if (p.type === 'split_pane' || p.type === 'split-pane') {
+        // Skip if user has an active split (user override)
+        if (split.initiator === 'user' && split.mode !== 'none') return
+        // Skip if terminal is already visible
+        if (activeView === 'terminal') return
+        setSplit({
+          mode: 'horizontal',
+          primaryView: activeView,
+          secondaryView: 'terminal',
+          focus: 'primary',
+          initiator: 'daemon',
+        })
+      } else if (p.type === 'close_split' || p.type === 'close-split') {
+        // Only close if daemon initiated the split
+        if (split.initiator === 'daemon') {
+          setSplit({ ...split, mode: 'none', initiator: 'daemon' })
+        }
       }
     }).then((fn) => { unlisten = fn })
     return () => { unlisten?.() }
-  }, [split])
+  }, [split, activeView])
 
   const isSplit = split.mode !== 'none'
   const splitDirection = split.mode === 'horizontal' ? 'row' : 'column'
@@ -161,13 +193,16 @@ export function ContentPane({ onTerminalPtyReady }: Props) {
             <span class={`ai-overlay__badge ai-overlay__badge--${aiOverlay.routing}`}>
               {aiOverlay.routing}
             </span>
+            {aiOverlay.latency_ms != null && (
+              <span class="ai-overlay__latency">{aiOverlay.latency_ms}ms</span>
+            )}
             <button class="ai-overlay__close" onClick={() => setAiOverlay(null)} aria-label="Close">
               ✕
             </button>
           </div>
           <div
             class="ai-overlay__body"
-            dangerouslySetInnerHTML={{ __html: aiOverlay.response }}
+            dangerouslySetInnerHTML={{ __html: revealedHtml }}
           />
         </div>
       )}

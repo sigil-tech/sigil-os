@@ -13,7 +13,6 @@
     "@fontsource/fira-code": "^5.1.1",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
-    "marked": "^12.0.0",
     "preact": "^10.25.4"
   },
   "devDependencies": {
@@ -21,6 +20,7 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/cli": "^2",
     "typescript": "^5.7.3",
-    "vite": "^6.0.3"
+    "vite": "^6.0.3",
+    "vitest": "^4.1.0"
   }
 }

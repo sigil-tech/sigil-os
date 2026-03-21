@@ -7,6 +7,7 @@ export interface SplitState {
   primaryView: ViewId
   secondaryView: ViewId
   focus: 'primary' | 'secondary'
+  initiator: 'user' | 'daemon'
 }
 
 export const defaultSplit: SplitState = {
@@ -14,4 +15,5 @@ export const defaultSplit: SplitState = {
   primaryView: 'terminal',
   secondaryView: 'editor',
   focus: 'primary',
+  initiator: 'user',
 }
