@@ -57,6 +57,10 @@ pub struct StatusResponse {
     pub notifier_level: Option<u32>,
     #[serde(default)]
     pub current_keybinding_profile: Option<String>,
+    #[serde(default)]
+    pub uptime_seconds: Option<u64>,
+    #[serde(default)]
+    pub events_today: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -697,6 +701,11 @@ impl DaemonClient {
         let val = self.call("ai-query", payload)?;
         serde_json::from_value(val).map_err(|e| format!("parse ai_query response: {}", e))
     }
+
+    pub fn set_level(&mut self, level: u32) -> Result<serde_json::Value, String> {
+        let payload = serde_json::json!({ "level": level });
+        self.call("set-level", payload)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1105,6 +1114,14 @@ pub fn daemon_ai_query(
     context: String,
 ) -> Result<AIQueryResponse, String> {
     state.lock().unwrap().ai_query(&query, &context)
+}
+
+#[tauri::command]
+pub fn daemon_set_level(
+    state: tauri::State<'_, Arc<Mutex<DaemonClient>>>,
+    level: u32,
+) -> Result<serde_json::Value, String> {
+    state.lock().map_err(|e| e.to_string())?.set_level(level)
 }
 
 /// Returns the current daemon connection status (transport, connected, remote_addr).

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import { invoke } from '@tauri-apps/api/core'
 import { emit } from '@tauri-apps/api/event'
 import { useApp, type ViewId } from '../context/AppContext'
+import { useToast } from '../context/ToastContext'
 
 interface PaletteItem {
   id: string
@@ -36,6 +37,7 @@ const TOOL_VIEWS: { id: ViewId; label: string }[] = [
 
 export function CommandPalette() {
   const { isPaletteOpen, setIsPaletteOpen, setActiveView } = useApp()
+  const { addToast } = useToast()
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
   const [dynamicItems, setDynamicItems] = useState<PaletteItem[]>([])
@@ -51,15 +53,140 @@ export function CommandPalette() {
     })),
     {
       id: 'cmd-trigger-summary',
-      label: 'Trigger analysis',
+      label: 'Trigger Analysis Cycle',
       description: 'sigilctl trigger-summary',
-      action: () => invoke('daemon_trigger_summary').catch(() => {}),
+      action: async () => {
+        try {
+          await invoke('daemon_trigger_summary')
+          addToast('Analysis cycle triggered', 'success')
+        } catch {
+          addToast('Failed to trigger analysis', 'error')
+        }
+      },
     },
     {
-      id: 'cmd-status',
-      label: 'sigilctl status',
+      id: 'cmd-set-level-0',
+      label: 'Set Level: Silent (0)',
+      description: 'Daemon autonomy level',
+      action: async () => {
+        try {
+          await invoke('daemon_set_level', { level: 0 })
+          addToast('Level set to Silent (0)', 'success')
+        } catch {
+          addToast('Failed to set level', 'error')
+        }
+      },
+    },
+    {
+      id: 'cmd-set-level-1',
+      label: 'Set Level: Digest (1)',
+      description: 'Daemon autonomy level',
+      action: async () => {
+        try {
+          await invoke('daemon_set_level', { level: 1 })
+          addToast('Level set to Digest (1)', 'success')
+        } catch {
+          addToast('Failed to set level', 'error')
+        }
+      },
+    },
+    {
+      id: 'cmd-set-level-2',
+      label: 'Set Level: Ambient (2)',
+      description: 'Daemon autonomy level',
+      action: async () => {
+        try {
+          await invoke('daemon_set_level', { level: 2 })
+          addToast('Level set to Ambient (2)', 'success')
+        } catch {
+          addToast('Failed to set level', 'error')
+        }
+      },
+    },
+    {
+      id: 'cmd-set-level-3',
+      label: 'Set Level: Conversational (3)',
+      description: 'Daemon autonomy level',
+      action: async () => {
+        try {
+          await invoke('daemon_set_level', { level: 3 })
+          addToast('Level set to Conversational (3)', 'success')
+        } catch {
+          addToast('Failed to set level', 'error')
+        }
+      },
+    },
+    {
+      id: 'cmd-set-level-4',
+      label: 'Set Level: Autonomous (4)',
+      description: 'Daemon autonomy level',
+      action: async () => {
+        try {
+          await invoke('daemon_set_level', { level: 4 })
+          addToast('Level set to Autonomous (4)', 'success')
+        } catch {
+          addToast('Failed to set level', 'error')
+        }
+      },
+    },
+    {
+      id: 'cmd-undo',
+      label: 'Undo Last Action',
+      description: 'sigilctl undo',
+      action: async () => {
+        try {
+          const result = await invoke<{ undone?: string }>('daemon_undo')
+          if (result?.undone) {
+            addToast(`Undone: ${result.undone}`, 'success')
+          } else {
+            addToast('Nothing to undo', 'info')
+          }
+        } catch {
+          addToast('Nothing to undo', 'info')
+        }
+      },
+    },
+    {
+      id: 'cmd-purge',
+      label: 'Purge All Data',
+      description: 'Danger: deletes all daemon data',
+      action: async () => {
+        if (!window.confirm('Purge all daemon data? This cannot be undone.')) return
+        try {
+          await invoke('daemon_purge')
+          addToast('All data purged', 'success')
+        } catch {
+          addToast('Failed to purge data', 'error')
+        }
+      },
+    },
+    {
+      id: 'cmd-view-config',
+      label: 'View Daemon Config',
+      description: 'Show current config',
+      action: async () => {
+        try {
+          const config = await invoke<Record<string, unknown>>('daemon_config')
+          await emit('ai-response', { text: '```json\n' + JSON.stringify(config, null, 2) + '\n```' })
+          addToast('Config loaded', 'success')
+        } catch {
+          addToast('Failed to load config', 'error')
+        }
+      },
+    },
+    {
+      id: 'cmd-view-status',
+      label: 'View Daemon Status',
       description: 'Show daemon status',
-      action: () => emit('execute-action', { cmd: 'sigilctl status' }).catch(() => {}),
+      action: async () => {
+        try {
+          const status = await invoke<Record<string, unknown>>('daemon_status')
+          await emit('ai-response', { text: '```json\n' + JSON.stringify(status, null, 2) + '\n```' })
+          addToast('Status loaded', 'success')
+        } catch {
+          addToast('Failed to load status', 'error')
+        }
+      },
     },
     {
       id: 'cmd-events',
@@ -78,6 +205,12 @@ export function CommandPalette() {
       label: 'View suggestions',
       description: 'sigilctl suggestions',
       action: () => { setActiveView('insights') },
+    },
+    {
+      id: 'settings',
+      label: 'Settings',
+      description: 'Ctrl+,',
+      action: () => { emit('open-settings', {}) },
     },
   ]
 

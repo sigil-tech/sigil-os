@@ -3,6 +3,8 @@ import { invoke } from '@tauri-apps/api/core'
 import { emit } from '@tauri-apps/api/event'
 import { useApp } from '../context/AppContext'
 import { isLauncherMode } from '../lib/platform'
+import { renderMarkdown } from '../lib/markdown'
+import { buildAIContext, type ConversationTurn } from '../lib/context'
 
 const MAX_HISTORY = 1000
 
@@ -12,6 +14,7 @@ export function InputBar({ activePtyId }: { activePtyId?: string }) {
   const [history, setHistory] = useState<string[]>([])
   const [histIdx, setHistIdx] = useState(-1)
   const [aiPending, setAiPending] = useState(false)
+  const [conversationHistory, setConversationHistory] = useState<ConversationTurn[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Alt+Tab toggles AI mode
@@ -46,14 +49,35 @@ export function InputBar({ activePtyId }: { activePtyId?: string }) {
       setAiPending(true)
       setValue('')
       try {
+        const ctx = await buildAIContext(activeView, conversationHistory)
         const resp = await invoke<{ response: string; routing: string; latency_ms: number }>(
           'daemon_ai_query',
-          { query: cmd, context: activeView }
+          { query: cmd, context: ctx }
         )
-        const html = await renderMarkdown(resp.response)
-        await emit('ai-response', { response: html, routing: resp.routing })
+        if (!resp.response) {
+          await emit('ai-response', {
+            response: '<p class="ai-muted">No response from daemon</p>',
+            routing: resp.routing,
+            latency_ms: resp.latency_ms,
+          })
+        } else {
+          const html = renderMarkdown(resp.response)
+          setConversationHistory((prev) => [
+            ...prev,
+            { role: 'user', content: cmd },
+            { role: 'assistant', content: resp.response, routing: resp.routing },
+          ])
+          await emit('ai-response', {
+            response: html,
+            routing: resp.routing,
+            latency_ms: resp.latency_ms,
+          })
+        }
       } catch (err) {
-        await emit('ai-response', { response: `<pre>Error: ${err}</pre>`, routing: 'local' })
+        await emit('ai-response', {
+          response: `<pre>Error: ${err}</pre>`,
+          routing: 'local',
+        })
       } finally {
         setAiPending(false)
       }
@@ -110,13 +134,4 @@ export function InputBar({ activePtyId }: { activePtyId?: string }) {
       />
     </div>
   )
-}
-
-async function renderMarkdown(text: string): Promise<string> {
-  try {
-    const { marked } = await import('marked')
-    return await marked(text)
-  } catch {
-    return `<pre>${text}</pre>`
-  }
 }

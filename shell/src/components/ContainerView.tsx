@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks'
 import { invoke } from '@tauri-apps/api/core'
+import { useApp } from '../context/AppContext'
 
 interface ContainerSummary {
   id: string
@@ -17,6 +18,7 @@ function statusDotClass(status: string): string {
 }
 
 export function ContainerView() {
+  const { activeView } = useApp()
   const [containers, setContainers] = useState<ContainerSummary[]>([])
   const [error, setError] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -36,10 +38,11 @@ export function ContainerView() {
   }
 
   useEffect(() => {
+    if (activeView !== 'containers') return
     fetchContainers()
     const id = setInterval(fetchContainers, 10_000)
     return () => clearInterval(id)
-  }, [])
+  }, [activeView])
 
   async function handleAction(action: 'start' | 'stop' | 'restart', id: string) {
     try {
@@ -74,7 +77,16 @@ export function ContainerView() {
     return (
       <div class="container-view">
         <div class="container-view__unavailable">
-          Docker unavailable — {error}
+          <div>
+            <div>Docker unavailable — {error}</div>
+            <button
+              class="container-view__action-btn"
+              style={{ marginTop: '12px' }}
+              onClick={() => { setLoading(true); setError(null); fetchContainers() }}
+            >
+              Retry
+            </button>
+          </div>
         </div>
       </div>
     )

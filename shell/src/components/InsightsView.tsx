@@ -34,13 +34,36 @@ interface Suggestion {
   created_at: string
 }
 
+interface DaemonHealth {
+  rss_mb: number | null
+  uptime_seconds: number | null
+  events_today: number | null
+  inference_mode: string | null
+  notifier_level: number | null
+  acceptance_rate: number | null
+}
+
+function formatUptime(seconds: number | null): string {
+  if (seconds === null || seconds === undefined) return '--'
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  return `${h}h ${m}m`
+}
+
 export function InsightsView() {
   const { activeView } = useApp()
   const [tab, setTab] = useState<InsightsTab>('events')
   const [events, setEvents] = useState<ShellEvent[]>([])
   const [patterns, setPatterns] = useState<Pattern[]>([])
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
-  const [metrics, setMetrics] = useState({ total: 0, localPct: 0, acceptPct: 0 })
+  const [health, setHealth] = useState<DaemonHealth>({
+    rss_mb: null,
+    uptime_seconds: null,
+    events_today: null,
+    inference_mode: null,
+    notifier_level: null,
+    acceptance_rate: null,
+  })
   const [fleetPreview, setFleetPreview] = useState<any>(null)
   const [fleetEnabled, setFleetEnabled] = useState(true)
   const [connected, setConnected] = useState(true)
@@ -62,23 +85,46 @@ export function InsightsView() {
         const pats = await invoke<Pattern[]>('daemon_patterns')
         setPatterns(pats)
       } catch {}
+
+      let acceptanceRate: number | null = null
       try {
         const sugs = await invoke<Suggestion[]>('daemon_suggestions')
         setSuggestions(sugs)
-        // Compute metrics from suggestions
-        const aiSugs = sugs.filter((s) => s.category === 'ai_discovery')
         const accepted = sugs.filter((s) => s.status === 'accepted').length
         const total = sugs.length
-        setMetrics({
-          total: aiSugs.length,
-          localPct: total > 0 ? Math.round((aiSugs.length / Math.max(total, 1)) * 100) : 0,
-          acceptPct: total > 0 ? Math.round((accepted / total) * 100) : 0,
-        })
+        acceptanceRate = total > 0 ? Math.round((accepted / total) * 100) : null
       } catch {}
+
+      let statusRss: number | null = null
+      let statusUptime: number | null = null
+      let statusEventsToday: number | null = null
+      try {
+        const status = await invoke<Record<string, any>>('daemon_status')
+        statusRss = typeof status.rss_mb === 'number' ? status.rss_mb : null
+        statusUptime = typeof status.uptime_seconds === 'number' ? status.uptime_seconds : null
+        statusEventsToday = typeof status.events_today === 'number' ? status.events_today : null
+      } catch {}
+
+      let inferenceMode: string | null = null
+      let notifierLevel: number | null = null
+      try {
+        const config = await invoke<Record<string, any>>('daemon_config')
+        inferenceMode = typeof config.inference_mode === 'string' ? config.inference_mode : null
+        notifierLevel = typeof config.notifier_level === 'number' ? config.notifier_level : null
+      } catch {}
+
+      setHealth({
+        rss_mb: statusRss,
+        uptime_seconds: statusUptime,
+        events_today: statusEventsToday,
+        inference_mode: inferenceMode,
+        notifier_level: notifierLevel,
+        acceptance_rate: acceptanceRate,
+      })
     }
 
     refresh()
-    const id = setInterval(refresh, 5_000)
+    const id = setInterval(refresh, 3_000)
     return () => clearInterval(id)
   }, [isActive])
 
@@ -115,18 +161,42 @@ export function InsightsView() {
 
   return (
     <div class="insights-view">
-      <div class="insights-view__metrics">
-        <div class="insights-view__metric">
-          <span class="insights-view__metric-label">Total queries today</span>
-          <span class="insights-view__metric-value">{metrics.total}</span>
+      <div class="insights-view__health-bar">
+        <div class="insights-view__health-metric">
+          <div class="insights-view__health-metric-label">RSS (MB)</div>
+          <div class="insights-view__health-metric-value">
+            {health.rss_mb !== null ? health.rss_mb.toFixed(1) : '--'}
+          </div>
         </div>
-        <div class="insights-view__metric">
-          <span class="insights-view__metric-label">Local %</span>
-          <span class="insights-view__metric-value">{metrics.localPct}%</span>
+        <div class="insights-view__health-metric">
+          <div class="insights-view__health-metric-label">Uptime</div>
+          <div class="insights-view__health-metric-value">
+            {formatUptime(health.uptime_seconds)}
+          </div>
         </div>
-        <div class="insights-view__metric">
-          <span class="insights-view__metric-label">Suggestion acceptance</span>
-          <span class="insights-view__metric-value">{metrics.acceptPct}%</span>
+        <div class="insights-view__health-metric">
+          <div class="insights-view__health-metric-label">Inference</div>
+          <div class="insights-view__health-metric-value">
+            {health.inference_mode ?? '--'}
+          </div>
+        </div>
+        <div class="insights-view__health-metric">
+          <div class="insights-view__health-metric-label">Events Today</div>
+          <div class="insights-view__health-metric-value">
+            {health.events_today !== null ? health.events_today : '--'}
+          </div>
+        </div>
+        <div class="insights-view__health-metric">
+          <div class="insights-view__health-metric-label">Accept Rate</div>
+          <div class="insights-view__health-metric-value">
+            {health.acceptance_rate !== null ? `${health.acceptance_rate}%` : '--'}
+          </div>
+        </div>
+        <div class="insights-view__health-metric">
+          <div class="insights-view__health-metric-label">Notif Level</div>
+          <div class="insights-view__health-metric-value">
+            {health.notifier_level !== null ? health.notifier_level : '--'}
+          </div>
         </div>
       </div>
 
@@ -173,10 +243,18 @@ export function InsightsView() {
             {patterns.map((p) => (
               <div key={p.id} class="insights-view__item">
                 <div class="insights-view__item-header">
+                  <span class="insights-view__category-badge">{p.category}</span>
                   <span>Confidence: {Math.round(p.confidence * 100)}%</span>
+                  <span>{new Date(p.created_at).toISOString()}</span>
                 </div>
                 <div><strong>{p.title}</strong></div>
                 <div style={{ color: '#9ca3af', fontSize: '11px' }}>{p.body}</div>
+                <div class="insights-view__confidence-bar">
+                  <div
+                    class="insights-view__confidence-fill"
+                    style={{ width: `${Math.round(p.confidence * 100)}%` }}
+                  />
+                </div>
               </div>
             ))}
           </>
@@ -190,16 +268,23 @@ export function InsightsView() {
             {suggestions.filter((s) => s.category === 'ai_discovery').length === 0 && (
               <div style={{ color: '#6b7280', fontSize: '12px' }}>No AI interactions yet</div>
             )}
-            {suggestions.filter((s) => s.category === 'ai_discovery').map((s) => (
-              <div key={s.id} class="insights-view__item">
-                <div class="insights-view__item-header">
-                  <span>{new Date(s.created_at).toLocaleTimeString()}</span>
-                  <span style={{ color: s.status === 'accepted' ? '#22c55e' : '#9ca3af' }}>{s.status}</span>
+            {suggestions.filter((s) => s.category === 'ai_discovery').map((s) => {
+              const statusClass =
+                s.status === 'accepted' ? 'insights-view__status--accepted' :
+                s.status === 'dismissed' ? 'insights-view__status--dismissed' :
+                s.status === 'ignored' ? 'insights-view__status--ignored' :
+                'insights-view__status--pending'
+              return (
+                <div key={s.id} class="insights-view__item">
+                  <div class="insights-view__item-header">
+                    <span>{new Date(s.created_at).toLocaleTimeString()}</span>
+                    <span class={statusClass}>{s.status}</span>
+                  </div>
+                  <div><strong>{s.title}</strong></div>
+                  <div style={{ color: '#9ca3af', fontSize: '11px' }}>{s.body}</div>
                 </div>
-                <div><strong>{s.title}</strong></div>
-                <div style={{ color: '#9ca3af', fontSize: '11px' }}>{s.body}</div>
-              </div>
-            ))}
+              )
+            })}
           </>
         )}
 
@@ -208,17 +293,25 @@ export function InsightsView() {
             {suggestions.filter((s) => s.category === 'insight').length === 0 && (
               <div style={{ color: '#6b7280', fontSize: '12px' }}>No prompts recorded yet</div>
             )}
-            {suggestions.slice(0, 5).map((s) => (
-              <div key={s.id} class="insights-view__item">
-                <div class="insights-view__item-header">
-                  <span>{new Date(s.created_at).toLocaleTimeString()}</span>
-                  <span>Confidence: {Math.round(s.confidence * 100)}%</span>
+            {suggestions.slice(0, 5).map((s) => {
+              const statusClass =
+                s.status === 'accepted' ? 'insights-view__status--accepted' :
+                s.status === 'dismissed' ? 'insights-view__status--dismissed' :
+                s.status === 'ignored' ? 'insights-view__status--ignored' :
+                'insights-view__status--pending'
+              return (
+                <div key={s.id} class="insights-view__item">
+                  <div class="insights-view__item-header">
+                    <span>{new Date(s.created_at).toLocaleTimeString()}</span>
+                    <span>Confidence: {Math.round(s.confidence * 100)}%</span>
+                    <span class={statusClass}>{s.status}</span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#d1d5db' }}>
+                    {s.body.length > 500 ? s.body.slice(0, 500) + '...' : s.body}
+                  </div>
                 </div>
-                <div style={{ fontSize: '11px', color: '#d1d5db' }}>
-                  {s.body.length > 500 ? s.body.slice(0, 500) + '...' : s.body}
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </>
         )}
 

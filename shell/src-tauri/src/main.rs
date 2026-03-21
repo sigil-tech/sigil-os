@@ -142,6 +142,7 @@ fn main() {
             daemon_client::daemon_sessions,
             daemon_client::daemon_actions,
             daemon_client::daemon_fleet_policy,
+            daemon_client::daemon_set_level,
             // CWD
             cwd::get_cwd,
             // PTY (local)
@@ -198,6 +199,7 @@ fn main() {
             daemon_client::daemon_sessions,
             daemon_client::daemon_actions,
             daemon_client::daemon_fleet_policy,
+            daemon_client::daemon_set_level,
             // CWD
             cwd::get_cwd,
             // PTY (local)

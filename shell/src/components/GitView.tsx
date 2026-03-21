@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks'
 import { invoke } from '@tauri-apps/api/core'
+import { useApp } from '../context/AppContext'
 
 interface CommitSummary {
   sha: string
@@ -22,24 +23,51 @@ function relativeTime(unix: number): string {
 }
 
 export function GitView() {
+  const { activeView } = useApp()
   const [repoPath, setRepoPath] = useState('')
   const [branch, setBranch] = useState('')
   const [files, setFiles] = useState<FileStatus[]>([])
   const [commits, setCommits] = useState<CommitSummary[]>([])
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [diff, setDiff] = useState('')
+  const [isGitRepo, setIsGitRepo] = useState(true)
 
   // Detect repo from process cwd at launch time
   useEffect(() => {
     invoke<string>('get_cwd').then(setRepoPath).catch(() => setRepoPath('/home'))
   }, [])
 
-  useEffect(() => {
+  async function fetchGitData() {
     if (!repoPath) return
-    invoke<string>('git_branch', { repoPath }).then(setBranch).catch(() => setBranch('(no branch)'))
-    invoke<FileStatus[]>('git_status', { repoPath }).then(setFiles).catch(() => {})
-    invoke<CommitSummary[]>('git_log', { repoPath, limit: 20 }).then(setCommits).catch(() => {})
-  }, [repoPath])
+    let failCount = 0
+    try {
+      const b = await invoke<string>('git_branch', { repoPath })
+      setBranch(b)
+    } catch {
+      setBranch('(no branch)')
+      failCount++
+    }
+    try {
+      const f = await invoke<FileStatus[]>('git_status', { repoPath })
+      setFiles(f)
+    } catch {
+      failCount++
+    }
+    try {
+      const c = await invoke<CommitSummary[]>('git_log', { repoPath, limit: 20 })
+      setCommits(c)
+    } catch {
+      failCount++
+    }
+    setIsGitRepo(failCount < 3)
+  }
+
+  useEffect(() => {
+    if (activeView !== 'git' || !repoPath) return
+    fetchGitData()
+    const id = setInterval(fetchGitData, 5000)
+    return () => clearInterval(id)
+  }, [activeView, repoPath])
 
   useEffect(() => {
     if (!selectedFile || !repoPath) return
@@ -47,6 +75,14 @@ export function GitView() {
       .then(setDiff)
       .catch(() => setDiff('(diff unavailable)'))
   }, [selectedFile, repoPath])
+
+  if (!isGitRepo) {
+    return (
+      <div class="git-view">
+        <div class="view-placeholder">Not a git repository</div>
+      </div>
+    )
+  }
 
   return (
     <div class="git-view">
