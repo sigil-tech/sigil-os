@@ -19,7 +19,9 @@ pub struct FileStatus {
 pub fn git_log(repo_path: String, limit: u32) -> Result<Vec<CommitSummary>, String> {
     let repo = Repository::open(&repo_path).map_err(|e| format!("open repo: {e}"))?;
     let mut revwalk = repo.revwalk().map_err(|e| format!("revwalk: {e}"))?;
-    revwalk.push_head().map_err(|e| format!("push_head: {e}"))?;
+    if let Err(_) = revwalk.push_head() {
+        return Ok(Vec::new()); // No commits yet
+    }
 
     let mut commits = Vec::new();
     for (i, oid) in revwalk.enumerate() {
@@ -74,6 +76,29 @@ pub fn git_status(repo_path: String) -> Result<Vec<FileStatus>, String> {
 #[tauri::command]
 pub fn git_diff(repo_path: String, file_path: String) -> Result<String, String> {
     let repo = Repository::open(&repo_path).map_err(|e| format!("open repo: {e}"))?;
+
+    // Check if file is untracked — diff_tree_to_workdir_with_index has no HEAD entry to diff
+    // against for untracked files and will produce an empty result, so we handle them explicitly.
+    let statuses = repo.statuses(None).map_err(|e| format!("statuses: {e}"))?;
+    let is_untracked = statuses.iter().any(|entry| {
+        entry.path() == Some(&file_path) && entry.status().contains(git2::Status::WT_NEW)
+    });
+
+    if is_untracked {
+        // For untracked files, show the file content as all additions.
+        let full_path = std::path::Path::new(&repo_path).join(&file_path);
+        let content = std::fs::read_to_string(&full_path)
+            .map_err(|e| format!("read file: {e}"))?;
+        let mut output = format!("--- /dev/null\n+++ b/{file_path}\n");
+        for line in content.lines() {
+            output.push('+');
+            output.push_str(line);
+            output.push('\n');
+        }
+        return Ok(output);
+    }
+
+    // Normal diff for tracked files.
     let head = repo.head().map_err(|e| format!("head: {e}"))?;
     let tree = head.peel_to_tree().map_err(|e| format!("peel tree: {e}"))?;
 
@@ -105,6 +130,11 @@ pub fn git_diff(repo_path: String, file_path: String) -> Result<String, String> 
 #[tauri::command]
 pub fn git_branch(repo_path: String) -> Result<String, String> {
     let repo = Repository::open(&repo_path).map_err(|e| format!("open repo: {e}"))?;
-    let head = repo.head().map_err(|e| format!("head: {e}"))?;
-    Ok(head.shorthand().unwrap_or("HEAD").to_string())
+    // Bind to a local so the Reference (and its borrow of `repo`) is dropped
+    // before `repo` itself is dropped at end of scope.
+    let result = match repo.head() {
+        Ok(head) => Ok(head.shorthand().unwrap_or("HEAD").to_string()),
+        Err(_) => Ok("(no commits)".to_string()),
+    };
+    result
 }

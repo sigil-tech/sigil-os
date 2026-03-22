@@ -6,6 +6,7 @@ mod containers;
 mod cwd;
 mod daemon_client;
 mod editor;
+mod files;
 mod git;
 mod hyprland;
 mod pty;
@@ -76,7 +77,7 @@ fn main() {
     };
     let tcp_addr_override = daemon_settings.tcp_addr_override.clone();
 
-    let mut builder = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .manage(client)
         .manage(pty_map)
         .manage(BrowserState::new());
@@ -173,6 +174,10 @@ fn main() {
             browser::browser_show,
             browser::browser_hide,
             browser::browser_get_url,
+            // Files
+            files::list_directory,
+            files::read_file,
+            files::write_file,
         ]);
     }
 
@@ -230,6 +235,10 @@ fn main() {
             browser::browser_show,
             browser::browser_hide,
             browser::browser_get_url,
+            // Files
+            files::list_directory,
+            files::read_file,
+            files::write_file,
             // Remote PTY (macOS only — SSH to VM)
             remote_pty::spawn_remote_pty,
             remote_pty::remote_pty_write,

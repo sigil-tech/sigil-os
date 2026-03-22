@@ -24,7 +24,7 @@ export function TerminalView({ onPtyReady }: Props) {
     const term = new Terminal({
       cursorStyle: 'block',
       allowTransparency: false,
-      fontSize: 14,
+      fontSize: 16,
       fontFamily: '"Fira Code", Consolas, "Courier New", monospace',
       theme: {
         background: '#0a0a0a',
@@ -57,6 +57,12 @@ export function TerminalView({ onPtyReady }: Props) {
         ptyIdRef.current = ptyId
         onPtyReady?.(ptyId)
         setReady(true)
+
+        // Set initial working directory
+        invoke<string>('get_cwd').then((cwd) => {
+          const writeCmd = launcherRef.current ? 'remote_pty_write' : 'pty_write'
+          invoke(writeCmd, { ptyId, data: `cd ${cwd} && clear\n` }).catch(() => {})
+        }).catch(() => {})
 
         // Stream PTY output into xterm (same event pattern for both local and remote)
         listen<string>(`pty-output-${ptyId}`, (event) => {

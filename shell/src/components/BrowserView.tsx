@@ -134,7 +134,7 @@ export function BrowserView() {
       </div>
 
       <div ref={contentRef} class="browser-view__content">
-        {!isCreated && <div class="browser-view__home">Sigil Browser</div>}
+        {!isCreated && <div class="browser-view__home"></div>}
       </div>
     </div>
   )

@@ -37,7 +37,7 @@
       pname = "sigil-shell-frontend";
       version = "0.1.0";
       src = ./shell;
-      npmDepsHash = "sha256-85F5caMK2eGTnQty7wf+L0sy8tAJ4Ol0Kbvyka4mFhA=";
+      npmDepsHash = "sha256-htKRePY1DtwC8XUdH8hrNDgrSL4iHysCsW6ww/oiaMw=";
       buildPhase = ''
         npm run build
       '';
