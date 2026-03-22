@@ -9,6 +9,8 @@ use uuid::Uuid;
 struct PtyInstance {
     master: Box<dyn portable_pty::MasterPty + Send>,
     writer: Box<dyn Write + Send>,
+    #[allow(dead_code)]
+    child: Box<dyn portable_pty::Child + Send>,
 }
 
 pub struct PtyMap(Arc<Mutex<HashMap<String, PtyInstance>>>);
@@ -17,6 +19,24 @@ impl PtyMap {
     pub fn new() -> Self {
         PtyMap(Arc::new(Mutex::new(HashMap::new())))
     }
+}
+
+/// Resolve the initial working directory for new PTY sessions.
+fn resolve_cwd() -> String {
+    // Priority: SIGIL_CWD env > ~/workspace > HOME
+    if let Ok(cwd) = std::env::var("SIGIL_CWD") {
+        if std::path::Path::new(&cwd).is_dir() {
+            return cwd;
+        }
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        let workspace = format!("{home}/workspace");
+        if std::path::Path::new(&workspace).is_dir() {
+            return workspace;
+        }
+        return home;
+    }
+    "/".to_string()
 }
 
 /// Internal helper shared by spawn_pty and spawn_editor.
@@ -39,7 +59,18 @@ pub fn open_pty(
     for arg in args {
         cmd.arg(arg);
     }
-    let _child = pair.slave.spawn_command(cmd).map_err(|e| format!("spawn: {e}"))?;
+
+    // Set the working directory so the shell starts in the right place.
+    let cwd = resolve_cwd();
+    cmd.cwd(&cwd);
+
+    // Ensure the child inherits the current environment (PATH, HOME, etc.).
+    // On NixOS, PATH includes /run/current-system/sw/bin which is essential.
+    for (key, value) in std::env::vars() {
+        cmd.env(key, value);
+    }
+
+    let child = pair.slave.spawn_command(cmd).map_err(|e| format!("spawn: {e}"))?;
 
     let writer = pair.master.take_writer().map_err(|e| format!("take_writer: {e}"))?;
     let mut reader = pair.master.try_clone_reader().map_err(|e| format!("clone_reader: {e}"))?;
@@ -62,12 +93,12 @@ pub fn open_pty(
 
     pty_map.0.lock().unwrap().insert(
         pty_id.clone(),
-        PtyInstance { master: pair.master, writer },
+        PtyInstance { master: pair.master, writer, child },
     );
     Ok(pty_id)
 }
 
-/// Spawns a PTY running the user's shell (or the given shell binary).
+/// Spawns a PTY running the user's shell as a login shell.
 #[tauri::command]
 pub fn spawn_pty(
     app: AppHandle,
@@ -79,7 +110,8 @@ pub fn spawn_pty(
     let shell_bin = shell.unwrap_or_else(|| {
         std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string())
     });
-    open_pty(&app, &state, &shell_bin, &[], cols, rows)
+    // Pass -l to start as a login shell (sources .zshrc/.bashrc, sets PATH).
+    open_pty(&app, &state, &shell_bin, &["-l"], cols, rows)
 }
 
 /// Writes data to the PTY's stdin.
@@ -94,6 +126,9 @@ pub fn pty_write(
     inst.writer
         .write_all(data.as_bytes())
         .map_err(|e| format!("write: {e}"))?;
+    inst.writer
+        .flush()
+        .map_err(|e| format!("flush: {e}"))?;
     Ok(())
 }
 

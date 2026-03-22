@@ -58,13 +58,7 @@ export function TerminalView({ onPtyReady }: Props) {
         onPtyReady?.(ptyId)
         setReady(true)
 
-        // Set initial working directory
-        invoke<string>('get_cwd').then((cwd) => {
-          const writeCmd = launcherRef.current ? 'remote_pty_write' : 'pty_write'
-          invoke(writeCmd, { ptyId, data: `cd ${cwd} && clear\n` }).catch(() => {})
-        }).catch(() => {})
-
-        // Stream PTY output into xterm (same event pattern for both local and remote)
+        // Stream PTY output into xterm
         listen<string>(`pty-output-${ptyId}`, (event) => {
           term.write(event.payload)
         })
@@ -76,7 +70,10 @@ export function TerminalView({ onPtyReady }: Props) {
         })
       })
       .catch((err) => {
-        term.writeln(`\x1b[31mFailed to spawn PTY: ${err}\x1b[0m`)
+        // Show error AND make terminal visible so user sees the message
+        setReady(true)
+        term.writeln(`\x1b[31mFailed to spawn terminal: ${err}\x1b[0m`)
+        term.writeln(`\x1b[33mCheck that $SHELL is set and the binary exists.\x1b[0m`)
       })
 
     return () => {
