@@ -22,12 +22,16 @@ in {
       nodejs
       fontconfig
       libnotify  # provides notify-send for sigild notifications
+      vscode     # VS Code editor (default external editor)
     ];
+
+    # Docker
+    virtualisation.docker.enable = true;
 
     # Users — gated so the launcher config can define its own
     users.users.nick = lib.mkIf cfg.enable {
       isNormalUser = true;
-      extraGroups = [ "wheel" "video" "audio" "networkmanager" ];
+      extraGroups = [ "wheel" "video" "audio" "networkmanager" "docker" ];
       shell = pkgs.zsh;
       initialPassword = "sigil";  # change after first login with `passwd`
       openssh.authorizedKeys.keys = [

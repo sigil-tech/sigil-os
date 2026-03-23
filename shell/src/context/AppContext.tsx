@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type { SplitState } from '../layouts'
 import { defaultSplit } from '../layouts'
 
-export type ViewId = 'terminal' | 'editor' | 'browser' | 'git' | 'containers' | 'insights'
+export type ViewId = 'terminal' | 'editor' | 'browser' | 'git' | 'containers' | 'insights' | 'extensions'
 export type InputMode = 'shell' | 'ai'
 
 interface AppState {

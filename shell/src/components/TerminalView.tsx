@@ -24,7 +24,7 @@ export function TerminalView({ onPtyReady }: Props) {
     const term = new Terminal({
       cursorStyle: 'block',
       allowTransparency: false,
-      fontSize: 14,
+      fontSize: 16,
       fontFamily: '"Fira Code", Consolas, "Courier New", monospace',
       theme: {
         background: '#0a0a0a',
@@ -42,36 +42,47 @@ export function TerminalView({ onPtyReady }: Props) {
     termRef.current = term
     fitRef.current = fitAddon
 
-    // Detect platform and spawn the appropriate PTY type
-    isLauncherMode().then((launcher) => {
-      launcherRef.current = launcher
+    // Use an async IIFE so we can properly await each step
+    ;(async () => {
+      try {
+        const launcher = await isLauncherMode()
+        launcherRef.current = launcher
 
-      const spawnCmd = launcher ? 'spawn_remote_pty' : 'spawn_pty'
-      const spawnArgs = launcher
-        ? { config: null, cols: term.cols, rows: term.rows }
-        : { shell: null, cols: term.cols, rows: term.rows }
+        const spawnCmd = launcher ? 'spawn_remote_pty' : 'spawn_pty'
+        const spawnArgs = launcher
+          ? { config: null, cols: term.cols, rows: term.rows }
+          : { shell: null, cols: term.cols, rows: term.rows }
 
-      return invoke<string>(spawnCmd, spawnArgs)
-    })
-      .then((ptyId) => {
+        // Spawn PTY
+        const ptyId = await invoke<string>(spawnCmd, spawnArgs)
         ptyIdRef.current = ptyId
-        onPtyReady?.(ptyId)
-        setReady(true)
 
-        // Stream PTY output into xterm (same event pattern for both local and remote)
-        listen<string>(`pty-output-${ptyId}`, (event) => {
+        // Register the output listener BEFORE signaling ready.
+        // This must be awaited — listen() is async and events emitted
+        // before registration are lost.
+        await listen<string>(`pty-output-${ptyId}`, (event) => {
           term.write(event.payload)
         })
 
         // Forward xterm input to PTY
+        const writeCmd = launcher ? 'remote_pty_write' : 'pty_write'
         term.onData((data) => {
-          const writeCmd = launcherRef.current ? 'remote_pty_write' : 'pty_write'
           invoke(writeCmd, { ptyId, data }).catch(() => {})
         })
-      })
-      .catch((err) => {
-        term.writeln(`\x1b[31mFailed to spawn PTY: ${err}\x1b[0m`)
-      })
+
+        // Now signal ready — terminal is fully wired
+        onPtyReady?.(ptyId)
+        setReady(true)
+
+        // Send a newline to trigger the prompt in case it was already sent
+        // before the listener was registered
+        await invoke(writeCmd, { ptyId, data: '\n' }).catch(() => {})
+      } catch (err) {
+        setReady(true)
+        term.writeln(`\x1b[31mFailed to spawn terminal: ${err}\x1b[0m`)
+        term.writeln(`\x1b[33mShell: ${await invoke<string>('get_cwd').catch(() => '?')}\x1b[0m`)
+      }
+    })()
 
     return () => {
       term.dispose()

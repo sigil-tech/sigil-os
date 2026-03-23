@@ -9,7 +9,7 @@ import { buildAIContext, type ConversationTurn } from '../lib/context'
 const MAX_HISTORY = 1000
 
 export function InputBar({ activePtyId }: { activePtyId?: string }) {
-  const { inputMode, setInputMode, activeView } = useApp()
+  const { inputMode, setInputMode, activeView, setActiveView } = useApp()
   const [value, setValue] = useState('')
   const [history, setHistory] = useState<string[]>([])
   const [histIdx, setHistIdx] = useState(-1)
@@ -37,6 +37,8 @@ export function InputBar({ activePtyId }: { activePtyId?: string }) {
       if (activePtyId) {
         const writeCmd = await isLauncherMode() ? 'remote_pty_write' : 'pty_write'
         await invoke(writeCmd, { ptyId: activePtyId, data: cmd + '\r' }).catch(() => {})
+        // Switch to terminal so user sees the output
+        if (activeView !== 'terminal') setActiveView('terminal')
       }
       setHistory((h) => {
         const updated = [cmd, ...h.filter((x) => x !== cmd)].slice(0, MAX_HISTORY)
@@ -113,7 +115,9 @@ export function InputBar({ activePtyId }: { activePtyId?: string }) {
 
   const prefix = inputMode === 'shell' ? '$' : '✦'
   const placeholder =
-    inputMode === 'shell' ? '' : 'Ask anything about your workflow...'
+    inputMode === 'shell'
+      ? (activePtyId ? 'Type a command (runs in terminal)...' : 'Terminal not ready')
+      : 'Ask anything about your workflow... (Alt+Tab to switch)'
 
   return (
     <div class="input-bar">

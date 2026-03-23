@@ -31,6 +31,7 @@ export function GitView() {
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [diff, setDiff] = useState('')
   const [isGitRepo, setIsGitRepo] = useState(true)
+  const [knownRepos, setKnownRepos] = useState<string[]>([])
 
   // Detect repo from process cwd at launch time
   useEffect(() => {
@@ -76,10 +77,50 @@ export function GitView() {
       .catch(() => setDiff('(diff unavailable)'))
   }, [selectedFile, repoPath])
 
+  // Fetch known repo paths from daemon config when not a git repo
+  useEffect(() => {
+    if (!isGitRepo) {
+      invoke<{ repo_paths?: string[] }>('daemon_config')
+        .then((cfg) => setKnownRepos(cfg.repo_paths ?? []))
+        .catch(() => setKnownRepos([]))
+    }
+  }, [isGitRepo])
+
   if (!isGitRepo) {
     return (
       <div class="git-view">
-        <div class="view-placeholder">Not a git repository</div>
+        <div style={{ padding: '16px', color: 'var(--color-fg-muted)' }}>
+          <div style={{ marginBottom: '12px' }}>Not a git repository</div>
+          {knownRepos.length > 0 && (
+            <div>
+              <div style={{ marginBottom: '8px', fontSize: '14px', color: 'var(--color-fg)' }}>
+                Known repositories:
+              </div>
+              {knownRepos.map((repo) => (
+                <button
+                  key={repo}
+                  onClick={() => { setRepoPath(repo); setIsGitRepo(true) }}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '8px 12px',
+                    marginBottom: '4px',
+                    background: 'var(--color-bg-surface)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: '4px',
+                    color: 'var(--color-fg)',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--font-family)',
+                    fontSize: '14px',
+                  }}
+                >
+                  {repo}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     )
   }
@@ -93,7 +134,7 @@ export function GitView() {
       <div class="git-view__panels">
         <div class="git-view__files">
           {files.length === 0 && (
-            <div style={{ padding: '12px', color: '#6b7280', fontSize: '12px' }}>
+            <div style={{ padding: '12px', color: '#6b7280', fontSize: '14px' }}>
               {repoPath ? 'Working tree clean' : 'No repo detected'}
             </div>
           )}
@@ -117,7 +158,7 @@ export function GitView() {
           {selectedFile ? (
             <pre>{diff || '(loading diff...)'}</pre>
           ) : (
-            <div style={{ color: '#6b7280', fontSize: '12px', padding: '12px' }}>
+            <div style={{ color: '#6b7280', fontSize: '14px', padding: '12px' }}>
               Select a file to view its diff
             </div>
           )}
