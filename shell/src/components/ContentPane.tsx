@@ -8,6 +8,7 @@ import { BrowserView } from './BrowserView'
 import { GitView } from './GitView'
 import { ContainerView } from './ContainerView'
 import { InsightsView } from './InsightsView'
+import { ExtensionsView } from './ExtensionsView'
 import { progressiveReveal } from '../lib/progressive-reveal'
 
 interface AIResponse {
@@ -46,6 +47,9 @@ function ViewForId({ viewId, onPtyReady }: { viewId: ViewId; onPtyReady?: (id: s
       </div>
       <div class="content-pane__view" style={{ display: viewId === 'insights' ? 'flex' : 'none' }}>
         <InsightsView />
+      </div>
+      <div class="content-pane__view" style={{ display: viewId === 'extensions' ? 'flex' : 'none' }}>
+        <ExtensionsView />
       </div>
     </>
   )
@@ -167,6 +171,9 @@ export function ContentPane({ onTerminalPtyReady }: Props) {
           </div>
           <div class="content-pane__view" style={{ display: activeView === 'insights' ? 'flex' : 'none', opacity: activeView === 'insights' ? 1 : 0 }}>
             <InsightsView />
+          </div>
+          <div class="content-pane__view" style={{ display: activeView === 'extensions' ? 'flex' : 'none', opacity: activeView === 'extensions' ? 1 : 0 }}>
+            <ExtensionsView />
           </div>
         </>
       ) : (

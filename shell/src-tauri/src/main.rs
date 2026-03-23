@@ -152,6 +152,8 @@ fn main() {
             pty::pty_resize,
             // Editor
             editor::spawn_editor,
+            editor::launch_external_editor,
+            editor::detect_editors,
             // Git
             git::git_log,
             git::git_status,
@@ -213,6 +215,8 @@ fn main() {
             pty::pty_resize,
             // Editor
             editor::spawn_editor,
+            editor::launch_external_editor,
+            editor::detect_editors,
             // Git
             git::git_log,
             git::git_status,

@@ -22,6 +22,7 @@ in {
       nodejs
       fontconfig
       libnotify  # provides notify-send for sigild notifications
+      vscode     # VS Code editor (default external editor)
     ];
 
     # Docker

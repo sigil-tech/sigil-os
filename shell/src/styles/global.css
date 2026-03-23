@@ -442,6 +442,71 @@ body {
   border-right: 1px solid var(--color-border);
   overflow-y: auto;
   background: var(--color-bg);
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-view__pref-toggle {
+  position: relative;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.editor-view__pref-btn {
+  width: 100%;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-fg);
+  padding: 4px 8px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  font-family: var(--font-family);
+  font-size: 13px;
+  text-align: left;
+}
+
+.editor-view__pref-btn:hover {
+  background: var(--color-bg-hover);
+}
+
+.editor-view__pref-menu {
+  position: absolute;
+  top: 100%;
+  left: 8px;
+  right: 8px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  z-index: 100;
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.editor-view__pref-option {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--color-fg);
+  padding: 6px 10px;
+  cursor: pointer;
+  font-family: var(--font-family);
+  font-size: 13px;
+  text-align: left;
+}
+
+.editor-view__pref-option:hover {
+  background: var(--color-bg-hover);
+}
+
+.editor-view__pref-option--active {
+  color: var(--color-accent);
+}
+
+.editor-view__nvim {
+  flex: 1;
+  overflow: hidden;
 }
 
 .editor-view__main {
@@ -515,6 +580,92 @@ body {
 .code-editor {
   height: 100%;
   width: 100%;
+}
+
+/* ── Extensions View ─────────────────────────────────────── */
+
+.extensions-view {
+  padding: 16px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.extensions-view__section {
+  margin-bottom: 24px;
+}
+
+.extensions-view__section-title {
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--color-fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.extensions-view__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.extensions-view__item {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.extensions-view__item-name {
+  font-weight: bold;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.extensions-view__item-detail {
+  font-size: 14px;
+  color: var(--color-fg-muted);
+}
+
+.extensions-view__item-action {
+  margin-left: auto;
+  background: var(--color-bg-hover);
+  border: 1px solid var(--color-border);
+  color: var(--color-fg);
+  padding: 4px 12px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  font-family: var(--font-family);
+  font-size: 14px;
+}
+
+.extensions-view__item-action:hover {
+  background: var(--color-accent);
+  color: #000;
+}
+
+.extensions-view__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.extensions-view__dot--ok { background: #22c55e; }
+.extensions-view__dot--err { background: #ef4444; }
+
+.extensions-view__empty {
+  color: var(--color-fg-muted);
+  font-size: 15px;
+  padding: 12px 0;
 }
 
 /* ── File Tree ───────────────────────────────────────────── */
