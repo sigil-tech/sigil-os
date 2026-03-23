@@ -29,6 +29,13 @@
     options = [ "defaults" "nofail" ];
   };
 
+  # Host-provided GGUF models for local inference
+  fileSystems."/sigil-models" = {
+    device = "sigil-models";
+    fsType = "virtiofs";
+    options = [ "ro" "nofail" ];
+  };
+
   # Networking — virtio-net with NAT from the host
   networking.useDHCP = true;
   networking.wireless.enable = lib.mkForce false;
@@ -62,7 +69,7 @@
   # Headless — no display, no audio
   hardware.graphics.enable = false;
   services.xserver.enable = false;
-  sound.enable = false;
+  # sound.enable was removed in NixOS 25.05; headless VMs simply have no audio hardware.
 
   # Smaller image: disable docs
   documentation.enable = false;
