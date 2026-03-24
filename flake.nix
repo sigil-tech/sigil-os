@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
     sigil-src = {
-      url = "git+file:///home/nick/workspace/sigil";
+      url = "github:sigil-tech/sigil";
       flake = false;
     };
   };

@@ -25,17 +25,17 @@
     "sigil-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1772999481,
-        "narHash": "sha256-B+3LU/VxY0ziKkdSPQhdyqcpzu01KSlXc1QvQ0YQSs0=",
-        "ref": "refs/heads/main",
-        "rev": "1e54c777b47a9cc57b876f194d8794cec5c3b3f4",
-        "revCount": 65,
-        "type": "git",
-        "url": "file:///home/nick/workspace/sigil"
+        "lastModified": 1774120899,
+        "narHash": "sha256-KbKIQW6rwzB79gSf/X10CF25kzeMsU/PlaVyBZiLMbc=",
+        "owner": "sigil-tech",
+        "repo": "sigil",
+        "rev": "d83e5463bbf1f3d54398a0195ad245294985df55",
+        "type": "github"
       },
       "original": {
-        "type": "git",
-        "url": "file:///home/nick/workspace/sigil"
+        "owner": "sigil-tech",
+        "repo": "sigil",
+        "type": "github"
       }
     }
   },
