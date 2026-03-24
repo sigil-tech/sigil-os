@@ -145,7 +145,9 @@ in {
       port    = ${toString cfg.network.port}
     '';
 
-    # Pre-create data directories so the sandboxed service can write to them
+    # Pre-create data directories so the sandboxed service can write to them.
+    # Also auto-detect a GGUF model from /sigil-models (host-mounted virtiofs)
+    # and write the model_path into the sigild config if not already set.
     system.activationScripts.sigildDirs = ''
       for u in /home/*; do
         user=$(basename "$u")
@@ -154,6 +156,16 @@ in {
         install -d -o "$user" -g users "$u/.config/sigil"
         install -d -o "$user" -g users "$u/.cache/sigil"
       done
+    '';
+
+    system.activationScripts.sigildModelPath = ''
+      # If model_path is empty and /sigil-models contains a .gguf file, patch the config
+      if [ -z "${cfg.inference.local.modelPath}" ] && [ -d /sigil-models ]; then
+        model=$(find /sigil-models -maxdepth 1 -name '*.gguf' -type f 2>/dev/null | head -n1)
+        if [ -n "$model" ]; then
+          ${pkgs.gnused}/bin/sed -i "s|^model_path = \"\"$|model_path = \"$model\"|" /etc/sigil/config.toml
+        fi
+      fi
     '';
 
     # Systemd user service

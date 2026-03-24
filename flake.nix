@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
     sigil-src = {
-      url = "git+file:///home/nick/workspace/sigil";
+      url = "github:sigil-tech/sigil";
       flake = false;
     };
   };
@@ -89,6 +89,7 @@
     # Shared module list — the core Sigil OS stack (full desktop)
     coreModules = [
       ./modules/sigil-base.nix
+      ./modules/sigil-tools.nix
       ./modules/sigil-hyprland.nix
       ./modules/sigild.nix
       ./modules/sigil-shell.nix
@@ -101,6 +102,7 @@
     # Launcher modules — headless VM for Apple Virtualization Framework
     launcherModules = [
       ./modules/sigil-base.nix
+      ./modules/sigil-tools.nix
       ./modules/sigild.nix
       ./modules/sigil-inference.nix
       ./hardware/apple-vf.nix
@@ -109,15 +111,83 @@
     # Launcher modules — headless VM for Hyper-V (Windows)
     launcherWindowsModules = [
       ./modules/sigil-base.nix
+      ./modules/sigil-tools.nix
       ./modules/sigild.nix
       ./modules/sigil-inference.nix
       ./hardware/hyper-v.nix
     ];
   in {
+    # Helper for launcher apps to build a custom NixOS VM with tool overrides.
+    #
+    # Usage:
+    #   sigil-os.lib.mkLauncherVM {
+    #     system = "aarch64-linux";
+    #     tools  = { editor = "neovim"; containerEngine = "none"; };
+    #   }
+    #
+    # The `tools` attrset maps directly to `sigil.tools.*` options and is
+    # merged on top of the defaults defined in sigil-tools.nix.
+    lib.mkLauncherVM = { system, tools ? {} }:
+      let
+        localPkgs = nixpkgs.legacyPackages.${system};
+        localSigild = localPkgs.buildGoModule {
+          pname = "sigild";
+          version = "0.1.0-dev";
+          src = sigil-src;
+          subPackages = [ "cmd/sigild" "cmd/sigilctl" ];
+          vendorHash = null;
+        };
+        # Pick the right hardware stub based on architecture.
+        hardwareModule =
+          if system == "aarch64-linux" then ./hardware/apple-vf.nix
+          else ./hardware/hyper-v.nix;
+        baseModules = [
+          ./modules/sigil-base.nix
+          ./modules/sigil-tools.nix
+          ./modules/sigild.nix
+          ./modules/sigil-inference.nix
+          hardwareModule
+        ];
+      in nixpkgs.lib.nixosSystem {
+        inherit system;
+        specialArgs = { sigild = localSigild; };
+        modules = baseModules ++ [
+          {
+            sigil.users.enable = false;
+
+            # Apply caller-supplied tool overrides on top of module defaults.
+            sigil.tools = { enable = true; } // tools;
+
+            services.sigild = {
+              enable = true;
+              logLevel = "debug";
+              watchDirs  = [ "/workspace" ];
+              repoDirs   = [ "/workspace" ];
+              dbPath     = "/sigil-profile/data.db";
+              network = {
+                enable = true;
+                bind   = "0.0.0.0";
+                port   = 7773;
+              };
+            };
+
+            services.sigil-inference.enable = true;
+          }
+        ];
+      };
+
     packages.${system} = {
       inherit sigild sigil-shell;
       default = sigild;
       launcher-windows-toplevel = self.nixosConfigurations.sigil-launcher-windows.config.system.build.toplevel;
+      # Full bootable disk image for the Windows (Hyper-V) launcher.
+      # GPT + EFI partition + ext4 root with GRUB installed.
+      launcher-windows-disk = import ./pkgs/make-disk-image.nix {
+        pkgs = pkgs;
+        lib = nixpkgs.lib;
+        nixosConfig = self.nixosConfigurations.sigil-launcher-windows;
+        platform = "hyper-v";
+      };
     };
 
     # aarch64-linux packages — launcher VM artifacts
@@ -126,6 +196,14 @@
       launcher-kernel = self.nixosConfigurations.sigil-launcher.config.boot.kernelPackages.kernel;
       launcher-initrd = self.nixosConfigurations.sigil-launcher.config.system.build.initialRamdisk;
       launcher-toplevel = self.nixosConfigurations.sigil-launcher.config.system.build.toplevel;
+      # Full bootable disk image for the macOS (Apple VF) launcher.
+      # Bare ext4 image + kernel + initrd for VZLinuxBootLoader direct boot.
+      launcher-disk = import ./pkgs/make-disk-image.nix {
+        pkgs = aarch64Pkgs;
+        lib = nixpkgs.lib;
+        nixosConfig = self.nixosConfigurations.sigil-launcher;
+        platform = "apple-vf";
+      };
     };
 
     # Installed NixOS on 2017 MacBook Pro
@@ -157,6 +235,7 @@
       modules = [
         "${nixpkgs}/nixos/modules/virtualisation/qemu-vm.nix"
         ./modules/sigil-base.nix
+        ./modules/sigil-tools.nix
         ./modules/sigild.nix
         ./modules/sigil-shell.nix
         ./modules/sigil-inference.nix

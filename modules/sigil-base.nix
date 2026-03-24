@@ -9,10 +9,9 @@ in {
     networking.hostName = lib.mkDefault "sigil";
     time.timeZone = lib.mkDefault "UTC";
 
-    # Essential developer packages
+    # Essential developer packages (editors and container engine are in sigil-tools)
     environment.systemPackages = with pkgs; [
       git
-      neovim
       lazygit
       ripgrep
       fd
@@ -22,11 +21,7 @@ in {
       nodejs
       fontconfig
       libnotify  # provides notify-send for sigild notifications
-      vscode     # VS Code editor (default external editor)
     ];
-
-    # Docker
-    virtualisation.docker.enable = true;
 
     # Users — gated so the launcher config can define its own
     users.users.nick = lib.mkIf cfg.enable {

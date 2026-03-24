@@ -57,6 +57,18 @@
     ];
   };
 
+  # Model files shared from host — read-only mount for llama.cpp inference
+  fileSystems."/sigil-models" = {
+    device = "//10.0.0.1/sigil-models";
+    fsType = "cifs";
+    options = [
+      "defaults" "nofail" "ro"
+      "x-systemd.automount" "x-systemd.device-timeout=10"
+      "username=sigil" "password=sigil"
+      "uid=1000" "gid=100"
+    ];
+  };
+
   # Ensure CIFS utils are available for mounting
   environment.systemPackages = [ pkgs.cifs-utils ];
 
@@ -93,7 +105,7 @@
   # Headless — no display, no audio
   hardware.graphics.enable = false;
   services.xserver.enable = false;
-  sound.enable = false;
+  # sound.enable was removed in NixOS 25.05; headless VMs simply have no audio hardware.
 
   # Smaller image: disable docs
   documentation.enable = false;
