@@ -1,0 +1,78 @@
+name: Build VM Images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'modules/**'
+      - 'hardware/**'
+      - 'pkgs/**'
+      - 'flake.nix'
+      - 'flake.lock'
+  workflow_dispatch:  # manual trigger from GitHub UI
+
+jobs:
+  build-windows-disk:
+    name: Build Windows/Hyper-V Disk Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history for flake
+
+      - uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            system-features = kvm big-parallel nixos-test
+
+      # GitHub runners have KVM enabled
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -la /dev/kvm
+
+      - name: Build x86_64 disk image
+        run: |
+          nix build .#packages.x86_64-linux.launcher-windows-disk --out-link result-windows-disk
+          ls -lh result-windows-disk/
+
+      - name: Convert to VHDX
+        run: |
+          sudo apt-get install -y qemu-utils
+          qemu-img convert -f raw -O vhdx result-windows-disk/sigil-vm.img sigil-vm.vhdx
+          ls -lh sigil-vm.vhdx
+
+      - name: Upload disk image artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sigil-vm-windows
+          path: |
+            result-windows-disk/vmlinuz
+            result-windows-disk/initrd
+            sigil-vm.vhdx
+          retention-days: 30
+
+  # Uncomment when you have an aarch64 runner (or use QEMU user-mode emulation)
+  # build-macos-disk:
+  #   name: Build macOS/Apple VF Disk Image
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: cachix/install-nix-action@v27
+  #       with:
+  #         extra_nix_config: |
+  #           extra-platforms = aarch64-linux
+  #           system-features = kvm big-parallel nixos-test
+  #     - name: Enable KVM + binfmt for aarch64
+  #       run: |
+  #         sudo apt-get install -y qemu-user-static
+  #         docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+  #     - name: Build aarch64 disk image
+  #       run: nix build .#packages.aarch64-linux.launcher-disk --out-link result-macos-disk
+  #     - uses: actions/upload-artifact@v4
+  #       with:
+  #         name: sigil-vm-macos
+  #         path: result-macos-disk/
+  #         retention-days: 30

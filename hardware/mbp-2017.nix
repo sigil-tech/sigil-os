@@ -11,10 +11,12 @@
   # Boot loader — EFI with systemd-boot
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
-  # Always boot the latest generation without showing the menu.
-  # Hold Space during POST to get the menu back when you need it.
+  # Boot the latest generation immediately — no menu, no countdown.
+  # Hold Space during POST to access the menu for recovery.
   boot.loader.timeout = 0;
-  boot.loader.systemd-boot.configurationLimit = 10;
+  boot.loader.systemd-boot.configurationLimit = 5;
+  boot.loader.systemd-boot.consoleMode = "max";
+  boot.loader.systemd-boot.editor = false;  # prevent boot entry editing
 
   # Kernel — use latest for best hardware support
   boot.kernelPackages = pkgs.linuxPackages_latest;
