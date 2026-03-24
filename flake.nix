@@ -19,7 +19,7 @@
       version = "0.1.0-dev";
       src = sigil-src;
       subPackages = [ "cmd/sigild" "cmd/sigilctl" ];
-      vendorHash = null;
+      vendorHash = "sha256-sTX4XPcenyJWKwujIQsBHv6fstG49fNXDxqIe9BZkQY=";
     };
 
     # Build sigild + sigilctl for aarch64-linux (Apple Silicon VMs)
@@ -29,7 +29,7 @@
       version = "0.1.0-dev";
       src = sigil-src;
       subPackages = [ "cmd/sigild" "cmd/sigilctl" ];
-      vendorHash = null;
+      vendorHash = "sha256-sTX4XPcenyJWKwujIQsBHv6fstG49fNXDxqIe9BZkQY=";
     };
 
     # Build Sigil Shell frontend (Preact + TypeScript + Vite)
@@ -135,7 +135,7 @@
           version = "0.1.0-dev";
           src = sigil-src;
           subPackages = [ "cmd/sigild" "cmd/sigilctl" ];
-          vendorHash = null;
+          vendorHash = "sha256-sTX4XPcenyJWKwujIQsBHv6fstG49fNXDxqIe9BZkQY=";
         };
         # Pick the right hardware stub based on architecture.
         hardwareModule =

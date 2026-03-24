@@ -77,7 +77,8 @@ push: ## Sync + rebuild on MBP over SSH (edit locally, deploy remotely)
 		sed -i "/vendor/d" .gitignore && \
 		git add -A && git diff-index --quiet HEAD || git commit -m "local build" && \
 		cd /tmp/sigil-os && \
-		sed -i "s|git+file:///home/nick/workspace/sigil|git+file:///tmp/sigil|" flake.nix && \
+		sed -i "s|github:sigil-tech/sigil|git+file:///tmp/sigil|" flake.nix && \
+		sed -i "s|vendorHash = \"sha256-[^\"]*\"|vendorHash = null|g" flake.nix && \
 		git add -A && git diff-index --quiet HEAD || git commit -m "local deploy" && \
 		rm -f flake.lock && \
 		sudo nixos-rebuild switch --flake /tmp/sigil-os\#sigil'
