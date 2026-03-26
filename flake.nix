@@ -127,7 +127,7 @@
     #
     # The `tools` attrset maps directly to `sigil.tools.*` options and is
     # merged on top of the defaults defined in sigil-tools.nix.
-    lib.mkLauncherVM = { system, tools ? {} }:
+    lib.mkLauncherVM = { system, platform ? "apple-vf", tools ? {} }:
       let
         localPkgs = nixpkgs.legacyPackages.${system};
         localSigild = localPkgs.buildGoModule {
@@ -137,10 +137,13 @@
           subPackages = [ "cmd/sigild" "cmd/sigilctl" ];
           vendorHash = "sha256-sTX4XPcenyJWKwujIQsBHv6fstG49fNXDxqIe9BZkQY=";
         };
-        # Pick the right hardware stub based on architecture.
-        hardwareModule =
-          if system == "aarch64-linux" then ./hardware/apple-vf.nix
-          else ./hardware/hyper-v.nix;
+        # Pick the right hardware stub based on platform.
+        # apple-vf: Apple Virtualization.framework (macOS, both Intel and Apple Silicon)
+        # hyper-v: Microsoft Hyper-V (Windows)
+        hardwareModule = {
+          "apple-vf" = ./hardware/apple-vf.nix;
+          "hyper-v"  = ./hardware/hyper-v.nix;
+        }.${platform};
         baseModules = [
           ./modules/sigil-base.nix
           ./modules/sigil-tools.nix
@@ -188,6 +191,42 @@
         nixosConfig = self.nixosConfigurations.sigil-launcher-windows;
         platform = "hyper-v";
       };
+      # x86_64-linux launcher VM artifacts for Intel Macs
+      launcher-kernel = self.nixosConfigurations.sigil-launcher-x86.config.boot.kernelPackages.kernel;
+      launcher-initrd = self.nixosConfigurations.sigil-launcher-x86.config.system.build.initialRamdisk;
+      launcher-toplevel = self.nixosConfigurations.sigil-launcher-x86.config.system.build.toplevel;
+      launcher-disk = import ./pkgs/make-disk-image.nix {
+        pkgs = pkgs;
+        lib = nixpkgs.lib;
+        nixosConfig = self.nixosConfigurations.sigil-launcher-x86;
+        platform = "apple-vf";
+      };
+    };
+
+    # x86_64-linux launcher — for Intel Macs using Virtualization.framework
+    nixosConfigurations.sigil-launcher-x86 = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      specialArgs = { sigild = sigild; };
+      modules = launcherModules ++ [
+        {
+          sigil.users.enable = false;
+
+          services.sigild = {
+            enable = true;
+            logLevel = "debug";
+            watchDirs  = [ "/workspace" ];
+            repoDirs   = [ "/workspace" ];
+            dbPath     = "/sigil-profile/data.db";
+            network = {
+              enable = true;
+              bind   = "0.0.0.0";
+              port   = 7773;
+            };
+          };
+
+          services.sigil-inference.enable = true;
+        }
+      ];
     };
 
     # aarch64-linux packages — launcher VM artifacts
@@ -205,6 +244,7 @@
         platform = "apple-vf";
       };
     };
+
 
     # Installed NixOS on 2017 MacBook Pro
     nixosConfigurations.sigil = nixpkgs.lib.nixosSystem {
