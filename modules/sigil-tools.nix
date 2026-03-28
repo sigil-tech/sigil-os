@@ -44,8 +44,8 @@ in {
     programs.zsh.enable  = lib.mkIf (cfg.shell == "zsh")  true;
     programs.bash.enable = lib.mkIf (cfg.shell == "bash") true;
 
-    # Set the sigil user's shell if that user exists
-    users.users.sigil = lib.mkIf (config.users.users ? sigil) {
+    # Set the sigil user's shell if the sigil users module is enabled
+    users.users.sigil = lib.mkIf config.sigil.users.enable {
       shell = if cfg.shell == "zsh" then pkgs.zsh else pkgs.bash;
     };
   };

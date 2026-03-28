@@ -1,19 +1,34 @@
 # Hardware configuration for Apple Virtualization Framework (macOS launcher)
-# Headless NixOS guest with virtio-fs shared directories and SSH access.
+# Supports both Apple Silicon (direct kernel boot) and Intel (UEFI boot).
 { config, pkgs, lib, ... }:
 
-{
-  # Boot: direct kernel boot via VZLinuxBootLoader (no bootloader needed)
-  boot.loader.grub.enable = false;
+let
+  isAarch64 = pkgs.stdenv.hostPlatform.isAarch64;
+in {
+  # Boot configuration — architecture-dependent
+  boot.loader.grub.enable = if isAarch64 then false else true;
+  boot.loader.grub.device = lib.mkIf (!isAarch64) "/dev/sda";
+  boot.loader.grub.efiSupport = lib.mkIf (!isAarch64) true;
+  boot.loader.grub.efiInstallAsRemovable = lib.mkIf (!isAarch64) true;
+
   boot.initrd.availableKernelModules = [
     "virtio_pci" "virtio_blk" "virtio_net" "virtio_console" "virtiofs"
+  ] ++ lib.optionals (!isAarch64) [
+    "usb_storage" "uas" "sd_mod" "ahci" "xhci_pci"
   ];
   boot.kernelModules = [ "virtiofs" ];
 
-  # Root filesystem — raw disk image provided by the launcher
+  # Root filesystem
+  # Apple Silicon: virtio block device (/dev/vda)
+  # Intel: USB mass storage (/dev/sda1 with EFI at /dev/sda0)
   fileSystems."/" = {
-    device = "/dev/vda";
+    device = if isAarch64 then "/dev/vda" else "/dev/sda2";
     fsType = "ext4";
+  };
+
+  fileSystems."/boot" = lib.mkIf (!isAarch64) {
+    device = "/dev/sda1";
+    fsType = "vfat";
   };
 
   # virtio-fs shared directories — mounted by the launcher via VZVirtioFileSystemDeviceConfiguration
@@ -46,6 +61,8 @@
   boot.kernelParams = [
     "console=hvc0"
     "systemd.log_target=console"
+  ] ++ lib.optionals (!isAarch64) [
+    "console=ttyS0"
   ];
 
   # SSH — primary access method from the launcher
@@ -69,7 +86,6 @@
   # Headless — no display, no audio
   hardware.graphics.enable = false;
   services.xserver.enable = false;
-  # sound.enable was removed in NixOS 25.05; headless VMs simply have no audio hardware.
 
   # Smaller image: disable docs
   documentation.enable = false;
