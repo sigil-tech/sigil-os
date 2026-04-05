@@ -30,15 +30,17 @@
   services.sigil-shell.enable = true;
   services.sigil-plymouth.enable = true;
   services.sigil-inference.enable = true;
+  sigil.tools.enable = true;
+  sigil.dev.enable = true;
 
   # Auto-create workspace and Tauri data directories
   system.activationScripts.workspace = ''
     for u in /home/*; do
-      user=$(basename "$u")
-      mkdir -p "$u/workspace"
-      mkdir -p "$u/.local/share/dev.sigil.shell"
-      chown -R "$user:users" "$u/workspace"
-      chown -R "$user:users" "$u/.local/share/dev.sigil.shell"
+      user=$(basename "''$u")
+      mkdir -p "''$u/workspace"
+      mkdir -p "''$u/.local/share/dev.sigil.shell"
+      chown -R "''$user:users" "''$u/workspace"
+      chown -R "''$user:users" "''$u/.local/share/dev.sigil.shell"
     done
   '';
 

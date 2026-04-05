@@ -1,59 +1,82 @@
 import { createContext } from 'preact'
-import { useContext, useState } from 'preact/hooks'
+import { useContext, useEffect, useState } from 'preact/hooks'
 import { invoke } from '@tauri-apps/api/core'
-import type { SplitState } from '../layouts'
-import { defaultSplit } from '../layouts'
+import { listen } from '@tauri-apps/api/event'
 
-export type ViewId = 'terminal' | 'editor' | 'browser' | 'git' | 'containers' | 'insights' | 'extensions'
+export type ViewId = 'home' | 'settings' | 'terminal' | 'git' | 'browser' | 'events' | 'editor'
 export type InputMode = 'shell' | 'ai'
+
+interface CwdChangedEvent {
+  path: string
+  git_root: string | null
+  git_branch: string | null
+  pty_id: string
+}
 
 interface AppState {
   activeView: ViewId
   setActiveView: (v: ViewId) => void
   inputMode: InputMode
   setInputMode: (m: InputMode) => void
-  split: SplitState
-  setSplit: (s: SplitState) => void
   isPaletteOpen: boolean
   setIsPaletteOpen: (v: boolean) => void
+  cwd: string
+  gitRoot: string | null
+  gitBranch: string | null
+  activePtyId: string | null
+  setActivePtyId: (id: string | null) => void
 }
 
 const AppCtx = createContext<AppState>({
-  activeView: 'terminal',
+  activeView: 'home',
   setActiveView: () => {},
-  inputMode: 'shell',
+  inputMode: 'ai',
   setInputMode: () => {},
-  split: defaultSplit,
-  setSplit: () => {},
   isPaletteOpen: false,
   setIsPaletteOpen: () => {},
+  cwd: '',
+  gitRoot: null,
+  gitBranch: null,
+  activePtyId: null,
+  setActivePtyId: () => {},
 })
 
 export function AppProvider({ children }: { children: preact.ComponentChildren }) {
-  const [activeView, rawSetActiveView] = useState<ViewId>('terminal')
-  const [inputMode, setInputMode] = useState<InputMode>('shell')
-  const [split, setSplit] = useState<SplitState>(defaultSplit)
+  const [activeView, setActiveView] = useState<ViewId>('home')
+  const [inputMode, setInputMode] = useState<InputMode>('ai')
   const [isPaletteOpen, setIsPaletteOpen] = useState(false)
+  const [cwd, setCwd] = useState('')
+  const [gitRoot, setGitRoot] = useState<string | null>(null)
+  const [gitBranch, setGitBranch] = useState<string | null>(null)
+  const [activePtyId, setActivePtyId] = useState<string | null>(null)
 
-  function setActiveView(v: ViewId) {
-    rawSetActiveView(v)
-    // When not split, keep primaryView in sync
-    if (split.mode === 'none') {
-      setSplit((s) => ({ ...s, primaryView: v }))
-    } else {
-      // Update the focused pane's view
-      if (split.focus === 'primary') {
-        setSplit((s) => ({ ...s, primaryView: v }))
-      } else {
-        setSplit((s) => ({ ...s, secondaryView: v }))
+  // Listen for CWD changes from the backend
+  useEffect(() => {
+    let unlisten: (() => void) | undefined
+    listen<CwdChangedEvent>('cwd-changed', (event) => {
+      const { path, git_root, git_branch, pty_id } = event.payload
+      if (activePtyId === null || pty_id === activePtyId) {
+        setCwd(path)
+        setGitRoot(git_root)
+        setGitBranch(git_branch)
       }
-    }
-    // Notify daemon of view change for keybinding profile switch
-    invoke('daemon_view_changed', { view: v }).catch(() => {})
-  }
+    }).then((fn) => { unlisten = fn })
+    return () => { unlisten?.() }
+  }, [activePtyId])
+
+  // Initialize CWD from backend on mount
+  useEffect(() => {
+    invoke<string>('get_cwd').then(setCwd).catch(() => {})
+  }, [])
 
   return (
-    <AppCtx.Provider value={{ activeView, setActiveView, inputMode, setInputMode, split, setSplit, isPaletteOpen, setIsPaletteOpen }}>
+    <AppCtx.Provider value={{
+      activeView, setActiveView,
+      inputMode, setInputMode,
+      isPaletteOpen, setIsPaletteOpen,
+      cwd, gitRoot, gitBranch,
+      activePtyId, setActivePtyId,
+    }}>
       {children}
     </AppCtx.Provider>
   )
@@ -61,9 +84,4 @@ export function AppProvider({ children }: { children: preact.ComponentChildren }
 
 export function useApp() {
   return useContext(AppCtx)
-}
-
-export function useSplitState() {
-  const { split, setSplit } = useApp()
-  return { split, setSplit }
 }

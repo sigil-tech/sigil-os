@@ -25,8 +25,8 @@
   # Ensure fontconfig cache directory exists for all users
   system.activationScripts.fontconfigCache = ''
     for u in /home/*; do
-      user=$(basename "$u")
-      install -d -o "$user" -g users "$u/.cache/fontconfig"
+      user=$(basename "''$u")
+      install -d -o "''$user" -g users "''$u/.cache/fontconfig"
     done
   '';
 
@@ -53,60 +53,61 @@
   system.activationScripts.hyprlandConfig = ''
     mkdir -p /home/nick/.config/hypr
     cat > /home/nick/.config/hypr/hyprland.conf << 'HYPRCONF'
-    # Sigil OS Hyprland Configuration
+# Sigil OS Hyprland Configuration
 
-    monitor=,preferred,auto,1
+monitor=,preferred,auto,auto
 
-    # Auto-start: terminal + waybar + notification daemon
-    exec-once = foot
-    exec-once = waybar -c /etc/waybar/config -s /etc/waybar/style.css
-    exec-once = mako
+# Auto-start: shell + waybar + notification daemon
+exec-once = sigil-shell
+exec-once = waybar -c /etc/waybar/config -s /etc/waybar/style.css
+exec-once = mako
 
-    # Global keybinds
-    $mod = SUPER
+# Global keybinds
+''$mod = SUPER
 
-    bind = $mod, Return, exec, foot
-    bind = $mod, Q, killactive
-    bind = $mod SHIFT, E, exit
+bind = ''$mod, Return, exec, foot
+bind = ''$mod, B, exec, firefox
+bind = ''$mod, Q, killactive
+bind = ''$mod SHIFT, E, exit
 
-    # View switching (sent to shell via hyprctl dispatch)
-    bind = $mod, 1, focuswindow, class:^(sigil-shell)$
-    bind = $mod, 2, focuswindow, class:^(sigil-shell)$
-    bind = $mod, 3, focuswindow, class:^(sigil-shell)$
-    bind = $mod, 4, focuswindow, class:^(sigil-shell)$
-    bind = $mod, 5, focuswindow, class:^(sigil-shell)$
-    bind = $mod, 6, focuswindow, class:^(sigil-shell)$
+# View switching (sent to shell via hyprctl dispatch)
+bind = ''$mod, 1, focuswindow, class:^(sigil-shell)$
+bind = ''$mod, 2, focuswindow, class:^(sigil-shell)$
+bind = ''$mod, 3, focuswindow, class:^(sigil-shell)$
+bind = ''$mod, 4, focuswindow, class:^(sigil-shell)$
+bind = ''$mod, 5, focuswindow, class:^(sigil-shell)$
+bind = ''$mod, 6, focuswindow, class:^(sigil-shell)$
 
-    # Pop-out window management
-    bind = $mod SHIFT, O, togglefloating
-    bind = $mod, F, fullscreen
+# Pop-out window management
+bind = ''$mod SHIFT, O, togglefloating
+bind = ''$mod, F, fullscreen
 
-    # Workspace basics
-    bind = $mod, left, movefocus, l
-    bind = $mod, right, movefocus, r
-    bind = $mod, up, movefocus, u
-    bind = $mod, down, movefocus, d
+# Workspace basics
+bind = ''$mod, left, movefocus, l
+bind = ''$mod, right, movefocus, r
+bind = ''$mod, up, movefocus, u
+bind = ''$mod, down, movefocus, d
 
-    # Lock screen
-    bind = $mod, L, exec, hyprlock
+# Lock screen
+bind = ''$mod, L, exec, hyprlock
 
-    # Appearance
-    general {
-      gaps_in = 0
-      gaps_out = 0
-      border_size = 1
-      col.active_border = rgb(6366f1)
-      col.inactive_border = rgb(222222)
-    }
+# Appearance
+general {
+  gaps_in = 0
+  gaps_out = 0
+  border_size = 1
+  col.active_border = rgb(6366f1)
+  col.inactive_border = rgb(222222)
+}
 
-    decoration {
-      rounding = 0
-    }
+decoration {
+  rounding = 0
+}
 
-    input {
-      kb_layout = us
-      follow_mouse = 1
-    }
+input {
+  kb_layout = us
+  follow_mouse = 1
+}
 HYPRCONF
     chown -R nick:users /home/nick/.config/hypr
 
@@ -126,37 +127,77 @@ FOOTCONF
   # Waybar configuration for daemon status
   environment.etc."waybar/config".text = builtins.toJSON {
     layer = "top";
-    position = "bottom";
-    height = 24;
+    position = "top";
+    height = 30;
     modules-left = [ "hyprland/workspaces" ];
     modules-center = [];
-    modules-right = [ "custom/sigild" "memory" "clock" ];
+    modules-right = [ "custom/sigild" "network" "pulseaudio" "battery" "clock" ];
     "custom/sigild" = {
       exec = "sigilctl status --json 2>/dev/null | jq -r '\"sigild: \" + .status + \" | \" + .inference_mode'";
       interval = 30;
       format = "{}";
     };
-    memory = {
-      format = "{}% mem";
+    network = {
+      format-wifi = "  {essid}";
+      format-ethernet = "  {ifname}";
+      format-disconnected = "  disconnected";
+      tooltip-format = "{ifname}: {ipaddr}/{cidr}";
       interval = 10;
     };
+    pulseaudio = {
+      format = "{icon} {volume}%";
+      format-muted = " muted";
+      format-icons = {
+        default = [ "" "" "" ];
+      };
+      on-click = "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle";
+    };
+    battery = {
+      interval = 30;
+      format = "{icon} {capacity}%";
+      format-charging = " {capacity}%";
+      format-icons = [ "" "" "" "" "" ];
+      states = {
+        warning = 25;
+        critical = 10;
+      };
+    };
     clock = {
-      format = "{:%H:%M}";
+      format = "{:%a %d %b  %H:%M}";
+      tooltip-format = "{:%Y-%m-%d %H:%M:%S}";
     };
   };
 
   environment.etc."waybar/style.css".text = ''
     * {
       font-family: "Fira Code", Consolas, 'Courier New', monospace;
-      font-size: 14px;
+      font-size: 13px;
       color: #e5e5e5;
     }
     window#waybar {
       background: #0a0a0a;
-      border-top: 1px solid #222222;
+      border-bottom: 1px solid #222222;
     }
     #custom-sigild {
       color: #6366f1;
+      padding: 0 8px;
+    }
+    #network {
+      padding: 0 6px;
+    }
+    #pulseaudio {
+      padding: 0 6px;
+    }
+    #battery {
+      padding: 0 6px;
+    }
+    #battery.warning {
+      color: #f59e0b;
+    }
+    #battery.critical {
+      color: #ef4444;
+    }
+    #clock {
       padding: 0 8px;
     }
   '';

@@ -3,8 +3,10 @@ use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
+
+use crate::cwd::{self, CwdTracker};
 
 const LOG_PATH: &str = "/tmp/sigil-pty-debug.log";
 
@@ -30,11 +32,34 @@ struct PtyInstance {
     child: Box<dyn portable_pty::Child + Send>,
 }
 
+/// Returns a shell hook that reports CWD via OSC 7 after every command.
+fn shell_hook(shell: &str) -> &'static str {
+    if shell.contains("zsh") {
+        // zsh: precmd fires after every command, before the prompt is displayed
+        r#"precmd() { print -Pn "\e]7;file://${HOST}${PWD}\a" }"#
+    } else if shell.contains("bash") {
+        // bash: PROMPT_COMMAND fires after every command
+        r#"PROMPT_COMMAND='printf "\e]7;file://%s%s\a" "$HOSTNAME" "$PWD"'"#
+    } else {
+        // fish emits OSC 7 by default; other shells get nothing
+        ""
+    }
+}
+
 pub struct PtyMap(Arc<Mutex<HashMap<String, PtyInstance>>>);
 
 impl PtyMap {
     pub fn new() -> Self {
         PtyMap(Arc::new(Mutex::new(HashMap::new())))
+    }
+
+    /// Write data to a specific PTY's stdin.
+    pub fn write_to(&self, pty_id: &str, data: &[u8]) -> Result<(), String> {
+        let mut map = self.0.lock().unwrap();
+        let inst = map.get_mut(pty_id).ok_or_else(|| format!("PTY {pty_id} not found"))?;
+        inst.writer.write_all(data).map_err(|e| format!("write: {e}"))?;
+        inst.writer.flush().map_err(|e| format!("flush: {e}"))?;
+        Ok(())
     }
 }
 
@@ -127,6 +152,12 @@ pub fn open_pty(
 
     debug_log("open_pty: writer and reader obtained, starting reader thread");
 
+    // Set initial CWD in tracker and mark this as active PTY
+    if let Some(tracker) = app.try_state::<CwdTracker>() {
+        tracker.update_cwd(app, &pty_id, cwd.clone());
+        tracker.set_active(app, &pty_id);
+    }
+
     let id_clone = pty_id.clone();
     let app_clone = app.clone();
     std::thread::spawn(move || {
@@ -139,14 +170,29 @@ pub fn open_pty(
                     debug_log(&format!(
                         "reader_thread[{id_clone}]: EOF after {total_bytes} total bytes"
                     ));
+                    // Clean up CWD tracker
+                    if let Some(tracker) = app_clone.try_state::<CwdTracker>() {
+                        tracker.remove_pty(&id_clone);
+                    }
                     break;
                 }
                 Ok(n) => {
                     total_bytes += n as u64;
-                    let data = String::from_utf8_lossy(&buf[..n]).to_string();
+                    let raw = &buf[..n];
+
+                    // Extract OSC 7 CWD updates before forwarding to frontend
+                    if let Some((path, _)) = cwd::extract_osc7(raw) {
+                        if let Some(tracker) = app_clone.try_state::<CwdTracker>() {
+                            tracker.update_cwd(&app_clone, &id_clone, path);
+                        }
+                    }
+
+                    // Strip OSC 7 from output — xterm.js doesn't need it
+                    let cleaned = cwd::strip_osc7(raw);
+                    let data = String::from_utf8_lossy(&cleaned).to_string();
+
                     let emit_result = app_clone.emit(&format!("pty-output-{id_clone}"), &data);
                     if total_bytes <= 4096 {
-                        // Log first chunk of output for debugging
                         let preview = if data.len() > 80 {
                             format!("{}...", &data[..80])
                         } else {
@@ -171,6 +217,22 @@ pub fn open_pty(
         pty_id.clone(),
         PtyInstance { master: pair.master, writer, child },
     );
+
+    // Inject shell hook for OSC 7 CWD reporting (after a brief delay for shell init)
+    let hook = shell_hook(program);
+    if !hook.is_empty() {
+        let hook_cmd = format!("{hook}\n");
+        let hook_pty_id = pty_id.clone();
+        let hook_map = pty_map.0.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            if let Some(inst) = hook_map.lock().unwrap().get_mut(&hook_pty_id) {
+                let _ = inst.writer.write_all(hook_cmd.as_bytes());
+                let _ = inst.writer.flush();
+                debug_log(&format!("open_pty: shell hook injected for {hook_pty_id}"));
+            }
+        });
+    }
 
     debug_log(&format!("open_pty: SUCCESS id={pty_id}"));
     Ok(pty_id)

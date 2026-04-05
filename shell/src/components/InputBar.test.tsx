@@ -4,18 +4,18 @@ import { AppProvider } from '../context/AppContext'
 import { InputBar } from './InputBar'
 
 describe('InputBar', () => {
-  it('renders shell mode by default', () => {
+  it('renders AI mode by default', () => {
     render(<AppProvider><InputBar /></AppProvider>)
-    expect(screen.getByText('$')).toBeTruthy()
+    expect(screen.getByText('✦')).toBeTruthy()
   })
 
-  it('shows "Terminal not ready" placeholder when no PTY', () => {
+  it('shows AI placeholder by default', () => {
     render(<AppProvider><InputBar /></AppProvider>)
-    expect(screen.getByPlaceholderText('Terminal not ready')).toBeTruthy()
+    expect(screen.getByPlaceholderText('Ask anything about your workflow... (Alt+Tab to switch)')).toBeTruthy()
   })
 
-  it('shows command placeholder when PTY is ready', () => {
-    render(<AppProvider><InputBar activePtyId="test-pty" /></AppProvider>)
-    expect(screen.getByPlaceholderText('Type a command (runs in terminal)...')).toBeTruthy()
+  it('has an input element', () => {
+    render(<AppProvider><InputBar /></AppProvider>)
+    expect(screen.getByRole('textbox')).toBeTruthy()
   })
 })

@@ -20,6 +20,7 @@
       src = sigil-src;
       subPackages = [ "cmd/sigild" "cmd/sigilctl" ];
       vendorHash = "sha256-sTX4XPcenyJWKwujIQsBHv6fstG49fNXDxqIe9BZkQY=";
+      doCheck = false;  # tests run in CI; Nix sandbox causes false failures
     };
 
     # Build sigild + sigilctl for aarch64-linux (Apple Silicon VMs)
@@ -30,6 +31,7 @@
       src = sigil-src;
       subPackages = [ "cmd/sigild" "cmd/sigilctl" ];
       vendorHash = "sha256-sTX4XPcenyJWKwujIQsBHv6fstG49fNXDxqIe9BZkQY=";
+      doCheck = false;
     };
 
     # Build Sigil Shell frontend (Preact + TypeScript + Vite)
@@ -37,7 +39,7 @@
       pname = "sigil-shell-frontend";
       version = "0.1.0";
       src = ./shell;
-      npmDepsHash = "sha256-0Tn4COf2sjp3d6vf/9/GcAA5MRNICBVpz1pXNywh4K8=";
+      npmDepsHash = "sha256-ZEchHoCVuN9gRGEELC+eYvbOq8wNaQ3KLyQKNo3iw5Y=";
       buildPhase = ''
         npm run build
       '';
@@ -97,6 +99,8 @@
       # Plymouth splash — enabled per-config via services.sigil-plymouth.enable.
       # Intentionally absent from sigil-vm so VM boots show console output.
       ./modules/sigil-plymouth.nix
+      # Dev workstation tools — enabled per-config via sigil.dev.enable.
+      ./modules/sigil-dev.nix
     ];
 
     # Launcher modules — headless VM for Apple Virtualization Framework
@@ -136,6 +140,7 @@
           src = sigil-src;
           subPackages = [ "cmd/sigild" "cmd/sigilctl" ];
           vendorHash = "sha256-sTX4XPcenyJWKwujIQsBHv6fstG49fNXDxqIe9BZkQY=";
+          doCheck = false;
         };
         # Pick the right hardware stub based on platform.
         # apple-vf: Apple Virtualization.framework (macOS, both Intel and Apple Silicon)

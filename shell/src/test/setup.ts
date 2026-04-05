@@ -30,6 +30,16 @@ const mockResponses: Record<string, any> = {
   daemon_ai_query: { response: 'Hello from AI', routing: 'local', latency_ms: 100 },
   daemon_view_changed: undefined,
   write_file: undefined,
+  load_app_config: [
+    { id: 'terminal', name: 'Terminal', icon: 'terminal', command: '', args: [], window_class: null, mode: 'inline' },
+    { id: 'editor', name: 'VS Code', icon: 'editor', command: '', args: [], window_class: null, mode: 'inline' },
+    { id: 'git', name: 'lazygit', icon: 'git', command: 'lazygit', args: [], window_class: null, mode: 'inline' },
+    { id: 'browser', name: 'Browser', icon: 'browser', command: '', args: [], window_class: null, mode: 'inline' },
+    { id: 'events', name: 'Events', icon: 'events', command: '', args: [], window_class: null, mode: 'inline' },
+  ],
+  save_app_config: null,
+  launch_app: null,
+  focus_or_launch: null,
 }
 
 // Mock @tauri-apps/api/core

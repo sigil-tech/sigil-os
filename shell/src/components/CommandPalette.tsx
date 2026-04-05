@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { invoke } from '@tauri-apps/api/core'
 import { emit } from '@tauri-apps/api/event'
-import { useApp, type ViewId } from '../context/AppContext'
+import { useApp } from '../context/AppContext'
 import { useToast } from '../context/ToastContext'
 
 interface PaletteItem {
@@ -26,14 +26,14 @@ function fuzzyScore(query: string, label: string): number {
   return qi === q.length ? score : 0
 }
 
-const TOOL_VIEWS: { id: ViewId; label: string }[] = [
-  { id: 'terminal', label: 'Switch to Terminal' },
-  { id: 'editor', label: 'Switch to Editor' },
-  { id: 'browser', label: 'Switch to Browser' },
-  { id: 'git', label: 'Switch to Git' },
-  { id: 'containers', label: 'Switch to Containers' },
-  { id: 'insights', label: 'Switch to Insights' },
-]
+interface AppConfig {
+  id: string
+  name: string
+  icon: string
+  command: string
+  args: string[]
+  window_class: string | null
+}
 
 export function CommandPalette() {
   const { isPaletteOpen, setIsPaletteOpen, setActiveView } = useApp()
@@ -45,12 +45,12 @@ export function CommandPalette() {
 
   // Build static items
   const staticItems: PaletteItem[] = [
-    ...TOOL_VIEWS.map((v) => ({
-      id: `view-${v.id}`,
-      label: v.label,
-      description: `Ctrl+${TOOL_VIEWS.indexOf(v) + 1}`,
-      action: () => setActiveView(v.id),
-    })),
+    {
+      id: 'view-home',
+      label: 'Go Home',
+      description: 'Landing screen',
+      action: () => setActiveView('home'),
+    },
     {
       id: 'cmd-trigger-summary',
       label: 'Trigger Analysis Cycle',
@@ -204,7 +204,7 @@ export function CommandPalette() {
       id: 'cmd-suggestions',
       label: 'View suggestions',
       description: 'sigilctl suggestions',
-      action: () => { setActiveView('insights') },
+      action: () => emit('execute-action', { cmd: 'sigilctl suggestions' }).catch(() => {}),
     },
     {
       id: 'settings',
@@ -222,6 +222,22 @@ export function CommandPalette() {
 
     async function load() {
       const items: PaletteItem[] = []
+
+      // Load configured rail apps as launchable commands
+      try {
+        const apps = await invoke<AppConfig[]>('load_app_config')
+        for (const app of apps) {
+          items.push({
+            id: `app-${app.id}`,
+            label: `Launch ${app.name}`,
+            description: app.command,
+            action: () => { invoke('focus_or_launch', {
+              command: app.command, args: app.args, cwd: null, windowClass: app.window_class,
+            }).catch(() => {}) },
+          })
+        }
+      } catch { /* apps config may not exist */ }
+
       try {
         const files = await invoke<{ path: string; count: number }[]>('daemon_files')
         for (const f of files.slice(0, 10)) {

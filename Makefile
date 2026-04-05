@@ -1,7 +1,8 @@
 SHELL := bash
 NIX := nix --extra-experimental-features 'nix-command flakes'
 
-.PHONY: check eval build-system build-iso build-vm run-vm deploy deploy-test push help
+.PHONY: check eval build-system build-iso build-vm run-vm deploy deploy-test push \
+       shell-dev shell-build shell-test shell-storybook help
 
 WIN_ISO_PATH := /mnt/c/Users/nick/Downloads/sigil-os.iso
 VM_DISK := /tmp/sigil-vm.qcow2
@@ -11,6 +12,7 @@ VM_CPUS := 2
 # SSH target for the installed MBP (set via env or override)
 MBP_HOST ?= nick@192.168.1.173
 SIGIL_SRC ?= $(HOME)/workspace/sigil
+SIGIL_FLEET_SRC ?= $(HOME)/workspace/sigil-fleet
 
 # ─── Fast feedback (seconds) ───────────────────────────────────────
 
@@ -48,6 +50,20 @@ run-vm: build-vm ## Build and boot VM in QEMU (SSH: ssh -p 2222 engineer@localho
 	@echo "==> Booting Sigil OS VM (SSH: ssh -p 2222 engineer@localhost)"
 	./result/bin/run-*-vm
 
+# ─── Shell development (local, no MBP needed) ───────────────────
+
+shell-dev: ## Start shell frontend dev server (hot-reload at localhost:5173)
+	cd shell && npm run dev
+
+shell-build: ## Build shell frontend (TypeScript check + Vite production build)
+	cd shell && npm run build
+
+shell-test: ## Run shell frontend tests
+	cd shell && npm test
+
+shell-storybook: ## Start Storybook component browser (localhost:6006)
+	cd shell && npm run storybook
+
 # ─── Remote deploy to installed MBP ──────────────────────────────
 
 deploy: ## Deploy to installed MBP over SSH (nixos-rebuild switch)
@@ -68,18 +84,22 @@ deploy-test: ## Deploy to MBP without switching (test only, rollback on reboot)
 
 push: ## Sync + rebuild on MBP over SSH (edit locally, deploy remotely)
 	@echo "==> Syncing sigil source to $(MBP_HOST):/tmp/sigil..."
-	rsync -azq --exclude=result $(SIGIL_SRC)/ $(MBP_HOST):/tmp/sigil/
+	rsync -azq --delete --exclude=result --exclude=.git $(SIGIL_SRC)/ $(MBP_HOST):/tmp/sigil/
+	@echo "==> Syncing sigil-fleet source to $(MBP_HOST):/tmp/sigil-fleet..."
+	rsync -azq --delete --exclude=result --exclude=.git $(SIGIL_FLEET_SRC)/ $(MBP_HOST):/tmp/sigil-fleet/
 	@echo "==> Syncing sigil-os config to $(MBP_HOST):/tmp/sigil-os..."
-	rsync -azq --exclude=result ./ $(MBP_HOST):/tmp/sigil-os/
+	rsync -azq --delete --exclude=result --exclude=.git ./ $(MBP_HOST):/tmp/sigil-os/
 	@echo "==> Building on MBP..."
 	ssh -t $(MBP_HOST) '\
-		cd /tmp/sigil && rm -rf vendor && go mod vendor && \
+		cd /tmp/sigil && \
+		go mod edit -replace github.com/sigil-tech/sigil-fleet=/tmp/sigil-fleet && \
+		rm -rf vendor && go mod vendor && \
 		sed -i "/vendor/d" .gitignore && \
-		git add -A && git diff-index --quiet HEAD || git commit -m "local build" && \
+		rm -rf .git && git init && git add -A && git commit -m "local build" && \
 		cd /tmp/sigil-os && \
 		sed -i "s|github:sigil-tech/sigil|git+file:///tmp/sigil|" flake.nix && \
 		sed -i "s|vendorHash = \"sha256-[^\"]*\"|vendorHash = null|g" flake.nix && \
-		git add -A && git diff-index --quiet HEAD || git commit -m "local deploy" && \
+		rm -rf .git && git init && git add -A && git commit -m "local deploy" && \
 		rm -f flake.lock && \
 		sudo nixos-rebuild switch --flake /tmp/sigil-os\#sigil'
 	@echo "==> Deploy complete."

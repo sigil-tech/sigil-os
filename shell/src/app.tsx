@@ -2,7 +2,8 @@ import { useEffect, useState } from 'preact/hooks'
 import { listen } from '@tauri-apps/api/event'
 import { AppProvider, useApp } from './context/AppContext'
 import { ToastProvider } from './context/ToastContext'
-import { LeftRail } from './components/LeftRail'
+import { AppRail } from './components/AppRail'
+import { PathBar } from './components/PathBar'
 import { ContentPane } from './components/ContentPane'
 import { SuggestionBar } from './components/SuggestionBar'
 import { InputBar } from './components/InputBar'
@@ -11,7 +12,6 @@ import { SettingsPanel } from './components/SettingsPanel'
 import { ToastContainer } from './components/Toast'
 
 function ShellInner() {
-  const [activePtyId, setActivePtyId] = useState<string | undefined>(undefined)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const { setIsPaletteOpen } = useApp()
 
@@ -30,7 +30,6 @@ function ShellInner() {
     return () => window.removeEventListener('keydown', handleKey)
   }, [setIsPaletteOpen])
 
-  // Listen for open-settings event from CommandPalette
   useEffect(() => {
     let unlisten: (() => void) | undefined
     listen('open-settings', () => {
@@ -41,11 +40,12 @@ function ShellInner() {
 
   return (
     <div class="shell-layout">
-      <LeftRail />
+      <AppRail />
       <div class="shell-main">
-        <ContentPane onTerminalPtyReady={setActivePtyId} />
+        <PathBar />
+        <ContentPane />
         <SuggestionBar />
-        <InputBar activePtyId={activePtyId} />
+        <InputBar />
       </div>
       <CommandPalette />
       <SettingsPanel isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />

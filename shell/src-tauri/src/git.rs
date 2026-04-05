@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use git2::Repository;
 use serde::Serialize;
 
@@ -13,6 +15,27 @@ pub struct CommitSummary {
 pub struct FileStatus {
     pub path: String,
     pub status: String,
+}
+
+/// Walk up from `path` looking for a `.git` directory.
+/// Returns the repo root path if found.
+pub fn find_repo_root(path: &str) -> Option<String> {
+    let mut current = PathBuf::from(path);
+    loop {
+        if current.join(".git").exists() {
+            return Some(current.to_string_lossy().into_owned());
+        }
+        if !current.pop() {
+            return None;
+        }
+    }
+}
+
+/// Get the current branch name for a repo root.
+pub fn current_branch_for(repo_root: &str) -> Option<String> {
+    let repo = Repository::open(repo_root).ok()?;
+    let head = repo.head().ok()?;
+    head.shorthand().map(|s| s.to_owned())
 }
 
 #[tauri::command]

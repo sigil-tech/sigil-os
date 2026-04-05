@@ -3,13 +3,12 @@ import { invoke } from '@tauri-apps/api/core'
 import { emit } from '@tauri-apps/api/event'
 import { useApp } from '../context/AppContext'
 import { isLauncherMode } from '../lib/platform'
-import { renderMarkdown } from '../lib/markdown'
 import { buildAIContext, type ConversationTurn } from '../lib/context'
 
 const MAX_HISTORY = 1000
 
 export function InputBar({ activePtyId }: { activePtyId?: string }) {
-  const { inputMode, setInputMode, activeView, setActiveView } = useApp()
+  const { inputMode, setInputMode, activeView } = useApp()
   const [value, setValue] = useState('')
   const [history, setHistory] = useState<string[]>([])
   const [histIdx, setHistIdx] = useState(-1)
@@ -37,8 +36,7 @@ export function InputBar({ activePtyId }: { activePtyId?: string }) {
       if (activePtyId) {
         const writeCmd = await isLauncherMode() ? 'remote_pty_write' : 'pty_write'
         await invoke(writeCmd, { ptyId: activePtyId, data: cmd + '\r' }).catch(() => {})
-        // Switch to terminal so user sees the output
-        if (activeView !== 'terminal') setActiveView('terminal')
+        // Shell commands handled via PTY if available
       }
       setHistory((h) => {
         const updated = [cmd, ...h.filter((x) => x !== cmd)].slice(0, MAX_HISTORY)
@@ -50,31 +48,24 @@ export function InputBar({ activePtyId }: { activePtyId?: string }) {
       // AI mode
       setAiPending(true)
       setValue('')
+      await emit('ai-query', { query: cmd })
       try {
         const ctx = await buildAIContext(activeView, conversationHistory)
         const resp = await invoke<{ response: string; routing: string; latency_ms: number }>(
           'daemon_ai_query',
           { query: cmd, context: ctx }
         )
-        if (!resp.response) {
-          await emit('ai-response', {
-            response: '<p class="ai-muted">No response from daemon</p>',
-            routing: resp.routing,
-            latency_ms: resp.latency_ms,
-          })
-        } else {
-          const html = renderMarkdown(resp.response)
-          setConversationHistory((prev) => [
-            ...prev,
-            { role: 'user', content: cmd },
-            { role: 'assistant', content: resp.response, routing: resp.routing },
-          ])
-          await emit('ai-response', {
-            response: html,
-            routing: resp.routing,
-            latency_ms: resp.latency_ms,
-          })
-        }
+        const content = resp.response || 'No response from daemon'
+        setConversationHistory((prev) => [
+          ...prev,
+          { role: 'user', content: cmd },
+          { role: 'assistant', content, routing: resp.routing },
+        ])
+        await emit('ai-response', {
+          response: content,
+          routing: resp.routing,
+          latency_ms: resp.latency_ms,
+        })
       } catch (err) {
         await emit('ai-response', {
           response: `<pre>Error: ${err}</pre>`,

@@ -1,8 +1,7 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod browser;
-mod containers;
+mod apps;
 mod cwd;
 mod daemon_client;
 mod editor;
@@ -14,7 +13,7 @@ mod pty;
 mod remote_pty;
 mod settings;
 
-use browser::BrowserState;
+use cwd::CwdTracker;
 use daemon_client::DaemonClient;
 use pty::PtyMap;
 use settings::{DaemonSettings, Transport};
@@ -51,6 +50,7 @@ fn main() {
     };
 
     let pty_map = PtyMap::new();
+    let cwd_tracker = CwdTracker::new();
 
     // Read optional theme CSS for injection at startup.
     let theme_css = std::fs::read_to_string("/etc/sigil-shell/theme.css")
@@ -77,10 +77,10 @@ fn main() {
     };
     let tcp_addr_override = daemon_settings.tcp_addr_override.clone();
 
-    let builder = tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .manage(client)
         .manage(pty_map)
-        .manage(BrowserState::new());
+        .manage(cwd_tracker);
 
     // macOS-only: register remote PTY state
     #[cfg(target_os = "macos")]
@@ -118,8 +118,6 @@ fn main() {
             Ok(())
         });
 
-    // Register invoke handlers — platform-gated commands use stubs on
-    // unsupported platforms so the handler list is unconditional.
     #[cfg(not(target_os = "macos"))]
     {
         app_builder = app_builder.invoke_handler(tauri::generate_handler![
@@ -146,7 +144,9 @@ fn main() {
             daemon_client::daemon_set_level,
             // CWD
             cwd::get_cwd,
-            // PTY (local)
+            cwd::set_active_pty,
+            cwd::navigate_to,
+            // PTY
             pty::spawn_pty,
             pty::pty_write,
             pty::pty_resize,
@@ -154,32 +154,22 @@ fn main() {
             editor::spawn_editor,
             editor::launch_external_editor,
             editor::detect_editors,
-            // Git
+            // Git (used by CWD tracker for repo detection)
             git::git_log,
             git::git_status,
             git::git_diff,
             git::git_branch,
             // Hyprland
             hyprland::pop_out_tool,
-            // Containers
-            containers::containers_list,
-            containers::container_start,
-            containers::container_stop,
-            containers::container_restart,
-            containers::container_logs,
-            // Browser
-            browser::browser_create,
-            browser::browser_navigate,
-            browser::browser_back,
-            browser::browser_forward,
-            browser::browser_reload,
-            browser::browser_show,
-            browser::browser_hide,
-            browser::browser_get_url,
             // Files
             files::list_directory,
             files::read_file,
             files::write_file,
+            // Apps
+            apps::load_app_config,
+            apps::save_app_config,
+            apps::launch_app,
+            apps::focus_or_launch,
         ]);
     }
 
@@ -209,7 +199,9 @@ fn main() {
             daemon_client::daemon_set_level,
             // CWD
             cwd::get_cwd,
-            // PTY (local)
+            cwd::set_active_pty,
+            cwd::navigate_to,
+            // PTY
             pty::spawn_pty,
             pty::pty_write,
             pty::pty_resize,
@@ -224,26 +216,16 @@ fn main() {
             git::git_branch,
             // Hyprland (stub on macOS)
             hyprland::pop_out_tool,
-            // Containers (stub on macOS)
-            containers::containers_list,
-            containers::container_start,
-            containers::container_stop,
-            containers::container_restart,
-            containers::container_logs,
-            // Browser (stub on macOS)
-            browser::browser_create,
-            browser::browser_navigate,
-            browser::browser_back,
-            browser::browser_forward,
-            browser::browser_reload,
-            browser::browser_show,
-            browser::browser_hide,
-            browser::browser_get_url,
             // Files
             files::list_directory,
             files::read_file,
             files::write_file,
-            // Remote PTY (macOS only — SSH to VM)
+            // Apps
+            apps::load_app_config,
+            apps::save_app_config,
+            apps::launch_app,
+            apps::focus_or_launch,
+            // Remote PTY (macOS only)
             remote_pty::spawn_remote_pty,
             remote_pty::remote_pty_write,
             remote_pty::remote_pty_resize,

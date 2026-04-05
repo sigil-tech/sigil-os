@@ -7,22 +7,22 @@ function ViewDisplay() {
   return (
     <div>
       <span data-testid="view">{activeView}</span>
-      <button onClick={() => setActiveView('git')}>switch</button>
+      <button onClick={() => setActiveView('settings')}>switch</button>
     </div>
   )
 }
 
 describe('AppContext', () => {
-  it('defaults to terminal view', () => {
+  it('defaults to home view', () => {
     render(<AppProvider><ViewDisplay /></AppProvider>)
-    expect(screen.getByTestId('view').textContent).toBe('terminal')
+    expect(screen.getByTestId('view').textContent).toBe('home')
   })
 
   it('switches view on setActiveView', async () => {
     render(<AppProvider><ViewDisplay /></AppProvider>)
     screen.getByText('switch').click()
     await waitFor(() => {
-      expect(screen.getByTestId('view').textContent).toBe('git')
+      expect(screen.getByTestId('view').textContent).toBe('settings')
     })
   })
 })

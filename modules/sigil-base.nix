@@ -13,6 +13,8 @@ in {
     environment.systemPackages = with pkgs; [
       git
       lazygit
+      lazydocker
+      ungoogled-chromium
       ripgrep
       fd
       jq
